@@ -32,6 +32,8 @@ type SiteConfig struct {
 	ProxyPass      string            `json:"proxy_pass"`
 	SSL            SSLConfig         `json:"ssl"`
 	RequestTimeout int               `json:"request_timeout"` // in seconds
+	FlushInterval  string            `json:"proxy_flush_interval"`
+	BufferSizeKB   int               `json:"buffer_size_kb"`
 
 	PluginConfigs map[string]interface{} `json:"plugin_configs"`
 }

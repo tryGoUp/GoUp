@@ -21,7 +21,7 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	if conf.ProxyPass != "" {
 		// Set up reverse proxy handler if ProxyPass is set.
-		proxy, err := getSharedReverseProxy(conf.ProxyPass)
+		proxy, err := getSharedReverseProxy(conf)
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy URL: %v", err)
 		}
@@ -54,8 +54,11 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 	if reqTimeout == 0 {
 		reqTimeout = 60 // Default to 60 seconds
 	}
-	timeout := time.Duration(reqTimeout) * time.Second
-	siteMwManager.Use(middleware.TimeoutMiddleware(timeout))
+
+	if reqTimeout > 0 {
+		timeout := time.Duration(reqTimeout) * time.Second
+		siteMwManager.Use(middleware.TimeoutMiddleware(timeout))
+	}
 
 	// Add logging middleware last to ensure it wraps the entire request
 	siteMwManager.Use(middleware.LoggingMiddleware(log, conf.Domain, identifier))
@@ -108,24 +111,45 @@ func (b *byteSlicePool) Put(buf []byte) {
 	}
 }
 
-// getSharedReverseProxy returns a shared ReverseProxy for the given backend URL.
-func getSharedReverseProxy(rawURL string) (*httputil.ReverseProxy, error) {
+// getSharedReverseProxy returns a shared ReverseProxy for the given site configuration.
+func getSharedReverseProxy(conf config.SiteConfig) (*httputil.ReverseProxy, error) {
 	sharedProxyMapMu.Lock()
 	defer sharedProxyMapMu.Unlock()
 
-	if rp, ok := sharedProxyMap[rawURL]; ok {
+	key := fmt.Sprintf("%s|%s|%d", conf.ProxyPass, conf.FlushInterval, conf.BufferSizeKB)
+
+	if rp, ok := sharedProxyMap[key]; ok {
 		return rp, nil
 	}
 
-	parsedURL, err := url.Parse(rawURL)
+	parsedURL, err := url.Parse(conf.ProxyPass)
 	if err != nil {
 		return nil, err
 	}
 
 	rp := httputil.NewSingleHostReverseProxy(parsedURL)
 	rp.Transport = defaultTransport
-	rp.BufferPool = globalBytePool
 
-	sharedProxyMap[rawURL] = rp
+	// Set FlushInterval
+	if conf.FlushInterval != "" {
+		if d, err := time.ParseDuration(conf.FlushInterval); err == nil {
+			rp.FlushInterval = d
+		}
+	}
+
+	// Set BufferPool with custom size if specified
+	if conf.BufferSizeKB > 0 {
+		rp.BufferPool = &byteSlicePool{
+			pool: sync.Pool{
+				New: func() interface{} {
+					return make([]byte, conf.BufferSizeKB*1024)
+				},
+			},
+		}
+	} else {
+		rp.BufferPool = globalBytePool
+	}
+
+	sharedProxyMap[key] = rp
 	return rp, nil
 }
