@@ -25,15 +25,19 @@ type SSLConfig struct {
 
 // SiteConfig contains the configuration for a single site.
 type SiteConfig struct {
-	Domain         string            `json:"domain"`
-	Port           int               `json:"port"`
-	RootDirectory  string            `json:"root_directory"`
-	CustomHeaders  map[string]string `json:"custom_headers"`
-	ProxyPass      string            `json:"proxy_pass"`
-	SSL            SSLConfig         `json:"ssl"`
-	RequestTimeout int               `json:"request_timeout"` // in seconds
-	FlushInterval  string            `json:"proxy_flush_interval"`
-	BufferSizeKB   int               `json:"buffer_size_kb"`
+	Domain            string            `json:"domain"`
+	Port              int               `json:"port"`
+	RootDirectory     string            `json:"root_directory"`
+	CustomHeaders     map[string]string `json:"custom_headers"`
+	ProxyPass         string            `json:"proxy_pass"`
+	SSL               SSLConfig         `json:"ssl"`
+	RequestTimeout    int               `json:"request_timeout"`     // in seconds
+	ReadHeaderTimeout int               `json:"read_header_timeout"` // in seconds
+	IdleTimeout       int               `json:"idle_timeout"`        // in seconds
+	MaxHeaderBytes    int               `json:"max_header_bytes"`    // in bytes
+	FlushInterval     string            `json:"proxy_flush_interval"`
+	BufferSizeKB      int               `json:"buffer_size_kb"`
+	EnableLogging     *bool             `json:"enable_logging,omitempty"` // Default true if nil
 
 	PluginConfigs map[string]interface{} `json:"plugin_configs"`
 }

@@ -1,8 +1,12 @@
 package middleware
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/logger"
@@ -11,11 +15,21 @@ import (
 
 // LoggingMiddleware logs HTTP requests.
 func LoggingMiddleware(l *logger.Logger, domain string, identifier string) MiddlewareFunc {
+	// sync.Pool for responseWriter to reduce allocation (Operation "31")
+	rwPool := sync.Pool{
+		New: func() interface{} {
+			return &responseWriter{}
+		},
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
-			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+			// Get ResponseWriter from pool
+			rw := rwPool.Get().(*responseWriter)
+			rw.ResponseWriter = w
+			rw.statusCode = http.StatusOK
 
 			next.ServeHTTP(rw, r)
 
@@ -29,19 +43,38 @@ func LoggingMiddleware(l *logger.Logger, domain string, identifier string) Middl
 				remoteAddr = ips
 			}
 
-			fields := logger.Fields{
-				"method":       r.Method,
-				"url":          r.URL.String(),
-				"remote_addr":  remoteAddr,
-				"status_code":  rw.statusCode,
-				"duration_sec": duration.Seconds(),
-				"domain":       domain,
-			}
-			l.WithFields(fields).Info("Handled request")
+			// Use Async Logging if initialized
+			if asyncLog := GetAsyncLogger(); asyncLog != nil {
+				entry := asyncLog.GetEntry()
+				entry.Logger = l
+				entry.Message = "Handled request"
+				entry.Identifier = identifier
+				entry.Fields["method"] = r.Method
+				entry.Fields["url"] = r.URL.String()
+				entry.Fields["remote_addr"] = remoteAddr
+				entry.Fields["status_code"] = rw.statusCode
+				entry.Fields["duration_sec"] = duration.Seconds()
+				entry.Fields["domain"] = domain
 
-			if tui.IsEnabled() {
-				tui.UpdateLog(identifier, fields)
+				asyncLog.Log(entry)
+			} else {
+				// Fallback to sync logging (creates allocations)
+				fields := logger.Fields{
+					"method":       r.Method,
+					"url":          r.URL.String(),
+					"remote_addr":  remoteAddr,
+					"status_code":  rw.statusCode,
+					"duration_sec": duration.Seconds(),
+					"domain":       domain,
+				}
+				l.WithFields(fields).Info("Handled request")
+				if tui.IsEnabled() {
+					tui.UpdateLog(identifier, fields)
+				}
 			}
+
+			rw.ResponseWriter = nil
+			rwPool.Put(rw)
 		})
 	}
 }
@@ -90,4 +123,35 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Flush implements http.Flusher.
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Hijack implements http.Hijacker.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+// ReadFrom implements io.ReaderFrom.
+func (rw *responseWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	if rf, ok := rw.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(r)
+	}
+	return io.Copy(rw.ResponseWriter, r)
+}
+
+// Push implements http.Pusher.
+func (rw *responseWriter) Push(target string, opts *http.PushOptions) error {
+	if pusher, ok := rw.ResponseWriter.(http.Pusher); ok {
+		return pusher.Push(target, opts)
+	}
+	return http.ErrNotSupported
 }

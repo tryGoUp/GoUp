@@ -1,28 +1,64 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/quic-go/quic-go/http3"
+	"golang.org/x/sys/unix"
 )
 
 // createHTTPServer creates an HTTP server with the given configuration and handler.
 func createHTTPServer(conf config.SiteConfig, handler http.Handler) *http.Server {
-	return &http.Server{
+	readTimeout := time.Duration(0)
+	writeTimeout := time.Duration(0)
+	if conf.RequestTimeout >= 0 {
+		readTimeout = time.Duration(conf.RequestTimeout) * time.Second
+		writeTimeout = time.Duration(conf.RequestTimeout) * time.Second
+	}
+
+	s := &http.Server{
 		Addr:         fmt.Sprintf(":%d", conf.Port),
 		Handler:      handler,
-		ReadTimeout:  time.Duration(conf.RequestTimeout) * time.Second,
-		WriteTimeout: time.Duration(conf.RequestTimeout) * time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 		TLSConfig: &tls.Config{
 			NextProtos: []string{"h3", "h2", "http/1.1"},
 		},
 	}
+
+	if conf.ReadHeaderTimeout > 0 {
+		s.ReadHeaderTimeout = time.Duration(conf.ReadHeaderTimeout) * time.Second
+	}
+	if conf.IdleTimeout > 0 {
+		s.IdleTimeout = time.Duration(conf.IdleTimeout) * time.Second
+	}
+	if conf.MaxHeaderBytes > 0 {
+		s.MaxHeaderBytes = conf.MaxHeaderBytes
+	}
+
+	return s
+}
+
+// listenOptimized creates a TCP listener with SO_REUSEPORT and TCP_FASTOPEN optimizations.
+func listenOptimized(addr string) (net.Listener, error) {
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+				unix.SetsockoptInt(int(fd), unix.SOL_TCP, unix.TCP_FASTOPEN, 256)
+			})
+		},
+	}
+	return lc.Listen(context.Background(), "tcp", addr)
 }
 
 // startServerInstance starts the HTTP server instance.
@@ -56,7 +92,12 @@ func startServerInstance(server *http.Server, conf config.SiteConfig, l *logger.
 			}
 		} else {
 			l.Infof("Serving on HTTP port %d", conf.Port)
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			ln, err := listenOptimized(server.Addr)
+			if err != nil {
+				l.Errorf("Error listening on port %d: %v", conf.Port, err)
+				return
+			}
+			if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 				l.Errorf("Server error on port %d: %v", conf.Port, err)
 			}
 		}

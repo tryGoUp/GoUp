@@ -33,6 +33,9 @@ func StartServers(configs []config.SiteConfig, enableTUI bool, enableBench bool)
 		tui.InitTUI()
 	}
 
+	// Initialize the global async logger
+	middleware.InitAsyncLogger(10000)
+
 	// Start API Server if enabled
 	api.StartAPIServer()
 

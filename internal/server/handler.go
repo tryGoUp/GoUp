@@ -60,8 +60,11 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		siteMwManager.Use(middleware.TimeoutMiddleware(timeout))
 	}
 
-	// Add logging middleware last to ensure it wraps the entire request
-	siteMwManager.Use(middleware.LoggingMiddleware(log, conf.Domain, identifier))
+	// Add logging middleware last to ensure it wraps the entire request.
+	// We default to true if the pointer is nil.
+	if conf.EnableLogging == nil || *conf.EnableLogging {
+		siteMwManager.Use(middleware.LoggingMiddleware(log, conf.Domain, identifier))
+	}
 
 	// Apply the final chain of middleware
 	handler = siteMwManager.Apply(handler)
