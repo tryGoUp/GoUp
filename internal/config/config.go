@@ -35,9 +35,10 @@ type SiteConfig struct {
 	ReadHeaderTimeout int               `json:"read_header_timeout"` // in seconds
 	IdleTimeout       int               `json:"idle_timeout"`        // in seconds
 	MaxHeaderBytes    int               `json:"max_header_bytes"`    // in bytes
-	FlushInterval     string            `json:"proxy_flush_interval"`
-	BufferSizeKB      int               `json:"buffer_size_kb"`
-	EnableLogging     *bool             `json:"enable_logging,omitempty"` // Default true if nil
+	FlushInterval            string                 `json:"proxy_flush_interval"`
+	BufferSizeKB             int                    `json:"buffer_size_kb"`
+	MaxConcurrentConnections int                    `json:"max_concurrent_connections"`
+	EnableLogging            *bool                  `json:"enable_logging,omitempty"` // Default true if nil
 
 	PluginConfigs map[string]interface{} `json:"plugin_configs"`
 }

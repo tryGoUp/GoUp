@@ -60,6 +60,11 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		siteMwManager.Use(middleware.TimeoutMiddleware(timeout))
 	}
 
+	// Add Concurrency Middleware
+	if conf.MaxConcurrentConnections > 0 {
+		siteMwManager.Use(middleware.ConcurrencyMiddleware(conf.MaxConcurrentConnections))
+	}
+
 	// Add logging middleware last to ensure it wraps the entire request.
 	// We default to true if the pointer is nil.
 	if conf.EnableLogging == nil || *conf.EnableLogging {
