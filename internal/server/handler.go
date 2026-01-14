@@ -55,11 +55,6 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		reqTimeout = 60 // Default to 60 seconds
 	}
 
-	if reqTimeout > 0 {
-		timeout := time.Duration(reqTimeout) * time.Second
-		siteMwManager.Use(middleware.TimeoutMiddleware(timeout))
-	}
-
 	// Add Concurrency Middleware
 	if conf.MaxConcurrentConnections > 0 {
 		siteMwManager.Use(middleware.ConcurrencyMiddleware(conf.MaxConcurrentConnections))
