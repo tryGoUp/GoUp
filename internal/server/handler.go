@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mirkobrombin/goup/internal/assets"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/mirkobrombin/goup/internal/plugin"
@@ -21,7 +22,7 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	if conf.ProxyPass != "" {
 		// Set up reverse proxy handler if ProxyPass is set.
-		proxy, err := getSharedReverseProxy(conf)
+		proxy, err := getSharedReverseProxy(conf, log)
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy URL: %v", err)
 		}
@@ -119,7 +120,7 @@ func (b *byteSlicePool) Put(buf []byte) {
 }
 
 // getSharedReverseProxy returns a shared ReverseProxy for the given site configuration.
-func getSharedReverseProxy(conf config.SiteConfig) (*httputil.ReverseProxy, error) {
+func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputil.ReverseProxy, error) {
 	sharedProxyMapMu.Lock()
 	defer sharedProxyMapMu.Unlock()
 
@@ -136,6 +137,12 @@ func getSharedReverseProxy(conf config.SiteConfig) (*httputil.ReverseProxy, erro
 
 	rp := httputil.NewSingleHostReverseProxy(parsedURL)
 	rp.Transport = defaultTransport
+
+	// Set custom error handler for the proxy
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Errorf("Proxy error for %s: %v", r.URL.Path, err)
+		assets.RenderErrorPage(w, http.StatusBadGateway, "Bad Gateway", "Unable to reach the backend server.")
+	}
 
 	// Set FlushInterval
 	if conf.FlushInterval != "" {

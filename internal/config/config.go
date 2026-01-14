@@ -25,20 +25,20 @@ type SSLConfig struct {
 
 // SiteConfig contains the configuration for a single site.
 type SiteConfig struct {
-	Domain            string            `json:"domain"`
-	Port              int               `json:"port"`
-	RootDirectory     string            `json:"root_directory"`
-	CustomHeaders     map[string]string `json:"custom_headers"`
-	ProxyPass         string            `json:"proxy_pass"`
-	SSL               SSLConfig         `json:"ssl"`
-	RequestTimeout    int               `json:"request_timeout"`     // in seconds
-	ReadHeaderTimeout int               `json:"read_header_timeout"` // in seconds
-	IdleTimeout       int               `json:"idle_timeout"`        // in seconds
-	MaxHeaderBytes    int               `json:"max_header_bytes"`    // in bytes
-	FlushInterval            string                 `json:"proxy_flush_interval"`
-	BufferSizeKB             int                    `json:"buffer_size_kb"`
-	MaxConcurrentConnections int                    `json:"max_concurrent_connections"`
-	EnableLogging            *bool                  `json:"enable_logging,omitempty"` // Default true if nil
+	Domain                   string            `json:"domain"`
+	Port                     int               `json:"port"`
+	RootDirectory            string            `json:"root_directory"`
+	CustomHeaders            map[string]string `json:"custom_headers"`
+	ProxyPass                string            `json:"proxy_pass"`
+	SSL                      SSLConfig         `json:"ssl"`
+	RequestTimeout           int               `json:"request_timeout"`     // in seconds
+	ReadHeaderTimeout        int               `json:"read_header_timeout"` // in seconds
+	IdleTimeout              int               `json:"idle_timeout"`        // in seconds
+	MaxHeaderBytes           int               `json:"max_header_bytes"`    // in bytes
+	FlushInterval            string            `json:"proxy_flush_interval"`
+	BufferSizeKB             int               `json:"buffer_size_kb"`
+	MaxConcurrentConnections int               `json:"max_concurrent_connections"`
+	EnableLogging            *bool             `json:"enable_logging,omitempty"` // Default true if nil
 
 	PluginConfigs map[string]interface{} `json:"plugin_configs"`
 }
@@ -87,6 +87,38 @@ func LoadConfig(filePath string) (SiteConfig, error) {
 		conf.PluginConfigs = make(map[string]interface{})
 	}
 	return conf, nil
+}
+
+// LoadConfigsFromFile loads configurations from a file, supporting both single object and array.
+func LoadConfigsFromFile(filePath string) ([]SiteConfig, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var configs []SiteConfig
+
+	// Try to unmarshal as array
+	if err := json.Unmarshal(data, &configs); err == nil {
+		// Ensure plugin configs map is initialized for each
+		for i := range configs {
+			if configs[i].PluginConfigs == nil {
+				configs[i].PluginConfigs = make(map[string]interface{})
+			}
+		}
+		return configs, nil
+	}
+
+	// Try to unmarshal as single object
+	var conf SiteConfig
+	if err := json.Unmarshal(data, &conf); err == nil {
+		if conf.PluginConfigs == nil {
+			conf.PluginConfigs = make(map[string]interface{})
+		}
+		return []SiteConfig{conf}, nil
+	}
+
+	return nil, fmt.Errorf("failed to parse config file: %s (must be SiteConfig or []SiteConfig local json)", filePath)
 }
 
 // LoadAllConfigs loads all configurations from the configuration directory.

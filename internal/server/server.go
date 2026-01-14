@@ -9,6 +9,7 @@ import (
 
 	"github.com/armon/go-radix"
 	"github.com/mirkobrombin/goup/internal/api"
+	"github.com/mirkobrombin/goup/internal/assets"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/dashboard"
 	"github.com/mirkobrombin/goup/internal/logger"
@@ -207,7 +208,7 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 		if h, found := radixTree.Get(host); found {
 			h.(http.Handler).ServeHTTP(w_, r_)
 		} else {
-			http.NotFound(w_, r_)
+			assets.RenderErrorPage(w_, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
 		}
 	}
 

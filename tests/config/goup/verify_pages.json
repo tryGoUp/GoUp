@@ -1,0 +1,21 @@
+[
+    {
+        "domain": "welcome.local",
+        "port": 9091,
+        "root_directory": "./tests/verification/empty_site",
+        "custom_headers": {}
+    },
+    {
+        "domain": "normal.local",
+        "port": 9091,
+        "root_directory": "./tests/verification/normal_site",
+        "custom_headers": {}
+    },
+    {
+        "domain": "bad-gateway.local",
+        "port": 9091,
+        "root_directory": "",
+        "proxy_pass": "http://localhost:54321",
+        "custom_headers": {}
+    }
+]

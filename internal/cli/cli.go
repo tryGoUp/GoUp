@@ -14,6 +14,7 @@ import (
 
 var tuiMode bool
 var benchMode bool
+var configPath string
 
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
@@ -39,6 +40,7 @@ func init() {
 
 	startCmd.Flags().BoolVarP(&tuiMode, "tui", "t", false, "Enable TUI mode")
 	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
+	startCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to specific configuration file")
 }
 
 var generateCmd = &cobra.Command{
@@ -148,14 +150,29 @@ var startCmd = &cobra.Command{
 }
 
 func start(cmd *cobra.Command, args []string) {
-	configs, err := config.LoadAllConfigs()
-	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
-		os.Exit(1)
+	var configs []config.SiteConfig
+	var err error
+
+	if configPath != "" {
+		configs, err = config.LoadConfigsFromFile(configPath)
+		if err != nil {
+			fmt.Printf("Error loading config from %s: %v\n", configPath, err)
+			os.Exit(1)
+		}
+	} else {
+		configs, err = config.LoadAllConfigs()
+		if err != nil {
+			fmt.Printf("Error loading configurations: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	if len(configs) == 0 {
-		fmt.Printf("No configurations found in %s\n", config.GetConfigDir())
+		if configPath != "" {
+			fmt.Printf("No valid configurations found in %s\n", configPath)
+		} else {
+			fmt.Printf("No configurations found in %s\n", config.GetConfigDir())
+		}
 		os.Exit(1)
 	}
 

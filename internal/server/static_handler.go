@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/mirkobrombin/goup/internal/assets"
 )
 
 // ServeStatic serves static files with support for pre-compressed sidecar files (.br, .gz).
@@ -20,10 +22,10 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.NotFound(w, r)
+			assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
 			return
 		}
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Something went wrong on our end.")
 		return
 	}
 
@@ -34,7 +36,12 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 			fullPath = indexPath
 			info = indexInfo
 		} else {
-			http.NotFound(w, r)
+			// Check if we are at root and index is missing -> Welcome Page
+			if cleanPath == "/" || cleanPath == "." || cleanPath == "\\" {
+				assets.RenderWelcomePage(w)
+				return
+			}
+			assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
 			return
 		}
 	}
@@ -72,7 +79,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 
 	file, err := os.Open(servePath)
 	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Unable to read file content.")
 		return
 	}
 	defer file.Close()
