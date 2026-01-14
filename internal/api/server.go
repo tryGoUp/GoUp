@@ -18,6 +18,7 @@ func StartAPIServer() {
 
 	go func() {
 		fmt.Printf("[API] Listening on :%d\n", port)
+
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), router); err != nil {
 			fmt.Printf("[API] Error: %v\n", err)
 		}

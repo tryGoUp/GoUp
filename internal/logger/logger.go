@@ -186,6 +186,12 @@ func NewPluginLogger(siteDomain, pluginName string) (*Logger, error) {
 	return l, nil
 }
 
+// NewSystemLogger creates a system-level log file (e.g. for SafeGuard).
+// It stores logs in logs/system/YYYY/MM/DD-Name.log.
+func NewSystemLogger(name string) (*Logger, error) {
+	return NewPluginLogger("system", name)
+}
+
 // Writer returns an io.WriteCloser that logs each written line.
 func (l *Logger) Writer() io.WriteCloser {
 	pr, pw := io.Pipe()

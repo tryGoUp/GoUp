@@ -14,6 +14,7 @@ import (
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/mirkobrombin/goup/internal/plugin"
 	"github.com/mirkobrombin/goup/internal/restart"
+	"github.com/mirkobrombin/goup/internal/safeguard"
 	"github.com/mirkobrombin/goup/internal/server/middleware"
 	"github.com/mirkobrombin/goup/internal/tui"
 )
@@ -38,6 +39,9 @@ func StartServers(configs []config.SiteConfig, enableTUI bool, enableBench bool)
 
 	// Start API Server if enabled
 	api.StartAPIServer()
+
+	// Start SafeGuard
+	safeguard.Start()
 
 	// Start Dashboard Server if enabled
 	dashboard.StartDashboardServer()

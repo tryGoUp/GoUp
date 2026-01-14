@@ -6,12 +6,20 @@ import (
 	"path/filepath"
 )
 
+// SafeGuardConfig defines configuration for the SafeGuard background routine.
+type SafeGuardConfig struct {
+	Enable        *bool  `json:"enable"`         // Explicitly enable/disable (default true)
+	MaxMemoryMB   int    `json:"max_memory_mb"`  // Restart if RSS > this (default 1024)
+	CheckInterval string `json:"check_interval"` // Interval to check memory (e.g. "10s")
+}
+
 // GlobalConfig contains the global settings for GoUP.
 type GlobalConfig struct {
-	EnableAPI      bool     `json:"enable_api"`
-	APIPort        int      `json:"api_port"`
-	DashboardPort  int      `json:"dashboard_port"`
-	EnabledPlugins []string `json:"enabled_plugins"` // empty means all enabled
+	EnableAPI      bool            `json:"enable_api"`
+	APIPort        int             `json:"api_port"`
+	DashboardPort  int             `json:"dashboard_port"`
+	EnabledPlugins []string        `json:"enabled_plugins"` // empty means all enabled
+	SafeGuard      SafeGuardConfig `json:"safeguard"`
 }
 
 // GlobalConf is the global configuration in memory.

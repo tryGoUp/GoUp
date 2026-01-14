@@ -5,3 +5,4 @@ public/node_test/app/node_modules
 public/node_test/app/pnpm-lock.yaml
 public/**/*.pyc
 public/**/*.venv
+benchmarks/

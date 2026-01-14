@@ -46,6 +46,25 @@ func Restart() {
 	}
 }
 
+// RestartServer is an alias for Restart (legacy support / clarity).
+func RestartServer() {
+	Restart()
+}
+
+// ForceRestart restarts the server immediately without waiting for graceful shutdown.
+func ForceRestart() {
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatalf("Failed to get executable: %v", err)
+	}
+	args := os.Args
+	env := os.Environ()
+	// Re-exec the process immediately (process replacement)
+	if err := syscall.Exec(exe, args, env); err != nil {
+		log.Fatalf("Failed to exec: %v", err)
+	}
+}
+
 // ScheduleRestart schedules a restart in `seconds` seconds.
 func ScheduleRestart(seconds int) {
 	go func() {
