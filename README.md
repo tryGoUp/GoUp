@@ -23,6 +23,33 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 - API for dynamic configuration changes
 - Docker/Podman support for easy deployment
 
+## Compression
+
+GoUp handles compression automatically with a dual-layer strategy:
+
+1.  **Pre-compressed Files**: Checks for `.br` or `.gz` sidecar files (e.g., `style.css.gz`) and serves them directly if available.
+2.  **On-The-Fly**: If no pre-compressed file is found, it uses Gzip compression on the fly for compressible content types (HTML, CSS, JSON, etc.).
+
+## SafeGuard (Auto-Restart)
+
+GoUp includes a built-in **SafeGuard** system that monitors memory usage and automatically restarts the process if it exceeds safety limits, ensuring long-term stability.
+
+- **Enabled by Default**: Checks memory usage every 30 seconds.
+- **Auto-Dump**: Saves a Pprof heap dump before restarting for easier debugging.
+- **Seamless Restart**: Uses `syscall.Exec` to replace the process immediately.
+
+Configuration (in `~/.config/goup/conf.global.json`):
+
+```json
+{
+  "safe_guard": {
+    "enable": true,
+    "max_memory_mb": 1024,
+    "check_interval": 30
+  }
+}
+```
+
 ## Installation
 
 Go is required to build the software, ensure you have it installed on your system.

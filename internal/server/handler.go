@@ -32,11 +32,11 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		})
 
 	} else {
-		// Serve static files from the root directory.
-		fs := http.FileServer(http.Dir(conf.RootDirectory))
+		// Serve static files from the root directory using the Smart Static Handler
+		// for compression.
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			addCustomHeaders(w, conf.CustomHeaders)
-			fs.ServeHTTP(w, r)
+			ServeStatic(w, r, conf.RootDirectory)
 		})
 	}
 
@@ -59,6 +59,10 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 	if conf.MaxConcurrentConnections > 0 {
 		siteMwManager.Use(middleware.ConcurrencyMiddleware(conf.MaxConcurrentConnections))
 	}
+
+	// Add Gzip Middleware (Smart Compression)
+	// Keeps pre-compressed files if they exist, compresses others on the fly.
+	siteMwManager.Use(middleware.GzipMiddleware)
 
 	// Add logging middleware last to ensure it wraps the entire request.
 	// We default to true if the pointer is nil.
