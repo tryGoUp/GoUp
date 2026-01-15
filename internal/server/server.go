@@ -174,6 +174,8 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 
 	radixTree := radix.New()
 
+	var firstHandler http.Handler
+
 	for _, conf := range configs {
 		if conf.ProxyPass == "" && conf.RootDirectory != "" {
 			if _, err := os.Stat(conf.RootDirectory); os.IsNotExist(err) {
@@ -195,6 +197,10 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 			continue
 		}
 
+		if firstHandler == nil {
+			firstHandler = handler
+		}
+
 		radixTree.Insert(conf.Domain, handler)
 	}
 
@@ -207,16 +213,13 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 			host = r_.Host
 		}
 
-		lg.Debugf("Virtual host lookup for host: '%s' (raw: '%s')", host, r_.Host)
-
 		if h, found := radixTree.Get(host); found {
 			h.(http.Handler).ServeHTTP(w_, r_)
 		} else {
-			lg.Warnf("Host NOT FOUND in radix tree: '%s'. Registered domains for this port:", host)
-			radixTree.Walk(func(s string, v any) bool {
-				lg.Warnf("  - %s", s)
-				return false
-			})
+			if firstHandler != nil {
+				firstHandler.ServeHTTP(w_, r_)
+				return
+			}
 			assets.RenderErrorPage(w_, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
 		}
 	}

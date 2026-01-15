@@ -33,21 +33,11 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		})
 
 	} else {
-		// Serve static files from the root directory
-		if conf.FileServerMode {
-			// File Server Mode: use standard http.FileServer with directory listing
-			fs := http.FileServer(http.Dir(conf.RootDirectory))
-			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				addCustomHeaders(w, conf.CustomHeaders)
-				fs.ServeHTTP(w, r)
-			})
-		} else {
-			// Smart Static Handler with custom error pages
-			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				addCustomHeaders(w, conf.CustomHeaders)
-				ServeStatic(w, r, conf.RootDirectory)
-			})
-		}
+		// Static File Handler with custom design and directory listing
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			addCustomHeaders(w, conf.CustomHeaders)
+			ServeStatic(w, r, conf.RootDirectory)
+		})
 	}
 
 	// Copy the global middleware manager for this site

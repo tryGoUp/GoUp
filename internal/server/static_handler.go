@@ -22,10 +22,22 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
+			if isBrowser(r) {
+				assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
+			} else {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprintln(w, "404 Not Found")
+			}
 			return
 		}
-		assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Something went wrong on our end.")
+		if isBrowser(r) {
+			assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Something went wrong on our end.")
+		} else {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, "500 Internal Server Error")
+		}
 		return
 	}
 
@@ -36,12 +48,48 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 			fullPath = indexPath
 			info = indexInfo
 		} else {
-			// Check if we are at root and index is missing -> Welcome Page
+			// Directory listing or Welcome Page
 			if cleanPath == "/" || cleanPath == "." || cleanPath == "\\" {
-				assets.RenderWelcomePage(w)
+				// If index.html is missing at root, we can still show listing if it's not empty
+			}
+
+			entries, err := os.ReadDir(fullPath)
+			if err != nil {
+				if isBrowser(r) {
+					assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Unable to read directory.")
+				} else {
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+					w.WriteHeader(http.StatusInternalServerError)
+					fmt.Fprintln(w, "500 Internal Server Error: Unable to read directory.")
+				}
 				return
 			}
-			assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
+
+			if isBrowser(r) {
+				var items []assets.ListingItem
+				for _, entry := range entries {
+					entryInfo, _ := entry.Info()
+					items = append(items, assets.ListingItem{
+						Name:    entry.Name(),
+						IsDir:   entry.IsDir(),
+						Size:    formatSizeBytes(entryInfo.Size()),
+						ModTime: entryInfo.ModTime().Format("2006-01-02 15:04:05"),
+					})
+				}
+
+				showBack := cleanPath != "/" && cleanPath != "." && cleanPath != "\\"
+				assets.RenderDirectoryListing(w, cleanPath, items, showBack)
+			} else {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				for _, entry := range entries {
+					name := entry.Name()
+					if entry.IsDir() {
+						name += "/"
+					}
+					fmt.Fprintln(w, name)
+				}
+			}
 			return
 		}
 	}
@@ -79,7 +127,13 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 
 	file, err := os.Open(servePath)
 	if err != nil {
-		assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Unable to read file content.")
+		if isBrowser(r) {
+			assets.RenderErrorPage(w, http.StatusInternalServerError, "Internal Server Error", "Unable to read file content.")
+		} else {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, "500 Internal Server Error: Unable to read file content.")
+		}
 		return
 	}
 	defer file.Close()
@@ -108,4 +162,20 @@ func calculateETag(info os.FileInfo) string {
 	hash.Write([]byte(strconv.FormatInt(info.Size(), 10)))
 	hash.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
 	return hex.EncodeToString(hash.Sum(nil))
+}
+func formatSizeBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+func isBrowser(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "text/html")
 }

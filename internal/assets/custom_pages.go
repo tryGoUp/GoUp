@@ -1,36 +1,32 @@
 package assets
 
 import (
-	"embed"
 	"html/template"
 	"net/http"
 )
 
-//go:embed templates/*
-var templatesFS embed.FS
-
 var (
 	ErrorTemplate   *template.Template
 	WelcomeTemplate *template.Template
+	ListingTemplate *template.Template
 	GlobalStyles    template.HTML
 )
 
 func init() {
 	var err error
 
-	// Read embedded CSS
-	cssContent, err := templatesFS.ReadFile("templates/style.css")
-	if err != nil {
-		panic(err)
-	}
-	// Wrap in style tags to avoid formatter issues in HTML templates
-	GlobalStyles = template.HTML("<style>" + string(cssContent) + "</style>")
+	// Initialize global styles
+	GlobalStyles = template.HTML("<style>" + StyleCSS + "</style>")
 
-	ErrorTemplate, err = template.ParseFS(templatesFS, "templates/error.html")
+	ErrorTemplate, err = template.New("error").Parse(ErrorHTML)
 	if err != nil {
 		panic(err)
 	}
-	WelcomeTemplate, err = template.ParseFS(templatesFS, "templates/welcome.html")
+	WelcomeTemplate, err = template.New("welcome").Parse(WelcomeHTML)
+	if err != nil {
+		panic(err)
+	}
+	ListingTemplate, err = template.New("listing").Parse(ListingHTML)
 	if err != nil {
 		panic(err)
 	}
@@ -43,6 +39,23 @@ type ErrorPageData struct {
 	Description string
 	FooterLink  string
 	Styles      template.HTML
+}
+
+// ListingPageData holds data for the directory listing template
+type ListingPageData struct {
+	Path       string
+	Items      []ListingItem
+	ShowBack   bool
+	FooterLink string
+	Styles     template.HTML
+}
+
+// ListingItem represents a file or directory in the listing
+type ListingItem struct {
+	Name    string
+	IsDir   bool
+	Size    string
+	ModTime string
 }
 
 // RenderErrorPage renders the error page to the response writer
@@ -79,5 +92,23 @@ func RenderWelcomePage(w http.ResponseWriter) {
 
 	if err := WelcomeTemplate.Execute(w, data); err != nil {
 		http.Error(w, "Welcome to GoUp!", http.StatusOK)
+	}
+}
+
+// RenderDirectoryListing renders the directory listing page
+func RenderDirectoryListing(w http.ResponseWriter, path string, items []ListingItem, showBack bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	data := ListingPageData{
+		Path:       path,
+		Items:      items,
+		ShowBack:   showBack,
+		FooterLink: "https://github.com/tryGoUp",
+		Styles:     GlobalStyles,
+	}
+
+	if err := ListingTemplate.Execute(w, data); err != nil {
+		http.Error(w, "Directory Listing", http.StatusOK)
 	}
 }
