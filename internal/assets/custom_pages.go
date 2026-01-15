@@ -47,8 +47,8 @@ type ErrorPageData struct {
 
 // RenderErrorPage renders the error page to the response writer
 func RenderErrorPage(w http.ResponseWriter, code int, title, description string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
-	w.Header().Set("Content-Type", "text/html")
 
 	data := ErrorPageData{
 		Code:        code,
@@ -66,8 +66,8 @@ func RenderErrorPage(w http.ResponseWriter, code int, title, description string)
 
 // RenderWelcomePage renders the welcome page
 func RenderWelcomePage(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "text/html")
 
 	data := struct {
 		FooterLink string
