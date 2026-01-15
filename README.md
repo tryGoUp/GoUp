@@ -23,6 +23,37 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 - API for dynamic configuration changes
 - Docker/Podman support for easy deployment
 
+
+## API & Dashboard
+
+GoUp includes a built-in REST API and a Web Dashboard for management.
+**By default, these are disabled for security reasons.**
+
+To enable them, edit your global configuration file (`~/.config/goup/conf.global.json`) and configure the `account` section to secure them.
+
+### Authentication
+
+Security is mandatory when enabling the API/Dashboard. GoUp uses:
+- **Basic Auth** for the Dashboard.
+- **Token Auth** for the API.
+
+Configuration example:
+
+```json
+{
+  "account": {
+    "username": "admin",
+    "password_hash": "$2a$12$R9h/cIPz0gi.URNNXMnmueKz3hJ...", // BCrypt hash
+    "api_token": "your-secret-token-here"
+  },
+  "enable_api": true,
+  "api_port": 6007,
+  "dashboard_port": 6008
+}
+```
+
+> **Note:** You can generate a BCrypt hash using online tools or `htpasswd -Bnm user password`.
+
 ## Compression
 
 GoUp handles compression automatically with a dual-layer strategy:
@@ -140,6 +171,14 @@ goup start --tui
 
   ```bash
   goup restart // Not implemented yet, use <Ctrl+C> to stop the server and start it again
+  ```
+
+- **Generate Password Hash:**
+
+  ```bash
+  goup gen-pass
+  # Or providing the password as argument
+  goup gen-pass mysecretpassword
   ```
 
 ## Configuration

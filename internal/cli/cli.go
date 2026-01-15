@@ -10,6 +10,8 @@ import (
 	"github.com/mirkobrombin/goup/internal/plugin"
 	"github.com/mirkobrombin/goup/internal/server"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/term"
 )
 
 var tuiMode bool
@@ -33,6 +35,7 @@ func Execute() {
 
 func init() {
 	rootCmd.AddCommand(generateCmd)
+	rootCmd.AddCommand(genPassCmd)
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(listCmd)
@@ -40,7 +43,9 @@ func init() {
 
 	startCmd.Flags().BoolVarP(&tuiMode, "tui", "t", false, "Enable TUI mode")
 	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
-	startCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to specific configuration file")
+
+	// Global flags
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to specific configuration file")
 }
 
 var generateCmd = &cobra.Command{
@@ -241,4 +246,38 @@ var pluginsCmd = &cobra.Command{
 			fmt.Printf("- %s\n", name)
 		}
 	},
+}
+
+// genPassCmd generates a Bcrypt password hash.
+var genPassCmd = &cobra.Command{
+	Use:   "gen-pass [password]",
+	Short: "Generate a Bcrypt hash for a password",
+	Long:  `Generate a Bcrypt hash for a password. If no password is provided as an argument, you will be prompted to enter one securely.`,
+	Args:  cobra.MaximumNArgs(1),
+	Run:   genPass,
+}
+
+func genPass(cmd *cobra.Command, args []string) {
+	var password []byte
+	var err error
+
+	if len(args) > 0 {
+		password = []byte(args[0])
+	} else {
+		fmt.Print("Enter Password: ")
+		password, err = term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println() // Add newline after silent input
+		if err != nil {
+			fmt.Printf("Error reading password: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
+	if err != nil {
+		fmt.Printf("Error generating hash: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(string(hash))
 }

@@ -40,9 +40,9 @@ func LoadGlobalConfig() error {
 	configFile := filepath.Join(configDir, globalConfName)
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		GlobalConf = &GlobalConfig{
-			EnableAPI:      true,
+			EnableAPI:      false,
 			APIPort:        6007,
-			DashboardPort:  6008,
+			DashboardPort:  0, // Disabled by default
 			EnabledPlugins: []string{},
 		}
 		return nil
