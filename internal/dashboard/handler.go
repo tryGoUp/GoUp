@@ -21,7 +21,15 @@ func apiProxy() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	return httputil.NewSingleHostReverseProxy(target)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		if config.GlobalConf != nil && config.GlobalConf.Account.APIToken != "" {
+			req.Header.Set("X-API-Token", config.GlobalConf.Account.APIToken)
+		}
+	}
+	return proxy
 }
 
 // spaFileServer returns an HTTP handler that serves static files from the

@@ -13,8 +13,16 @@ type SafeGuardConfig struct {
 	CheckInterval string `json:"check_interval"` // Interval to check memory (e.g. "10s")
 }
 
+// AccountConfig defines the authentication credentials.
+type AccountConfig struct {
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"` // Bcrypt hash
+	APIToken     string `json:"api_token"`
+}
+
 // GlobalConfig contains the global settings for GoUP.
 type GlobalConfig struct {
+	Account        AccountConfig   `json:"account"`
 	EnableAPI      bool            `json:"enable_api"`
 	APIPort        int             `json:"api_port"`
 	DashboardPort  int             `json:"dashboard_port"`

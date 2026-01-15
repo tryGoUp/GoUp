@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/mirkobrombin/goup/internal/config"
+	"github.com/mirkobrombin/goup/internal/middleware"
 )
 
 // StartAPIServer starts the GoUp API server.
@@ -19,7 +20,10 @@ func StartAPIServer() {
 	go func() {
 		fmt.Printf("[API] Listening on :%d\n", port)
 
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), router); err != nil {
+		var handler http.Handler = router
+		handler = middleware.TokenAuthMiddleware(handler)
+
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), handler); err != nil {
 			fmt.Printf("[API] Error: %v\n", err)
 		}
 	}()
