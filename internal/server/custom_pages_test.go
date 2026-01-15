@@ -14,6 +14,7 @@ func TestServeStatic_CustomPages(t *testing.T) {
 	// Test 404 - File Not Found
 	t.Run("404 Custom Page", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/nonexistent.html", nil)
+		req.Header.Set("Accept", "text/html")
 		w := httptest.NewRecorder()
 
 		ServeStatic(w, req, rootDir)
@@ -28,7 +29,7 @@ func TestServeStatic_CustomPages(t *testing.T) {
 			t.Error("Expected body to contain 'GoUp'")
 		}
 		if !strings.Contains(body, "Page Not Found") {
-			t.Error("Expected body to contain 'Page Not Found'")
+			t.Errorf("Expected body to contain 'Page Not Found', got: %s", body)
 		}
 	})
 
@@ -36,6 +37,7 @@ func TestServeStatic_CustomPages(t *testing.T) {
 	t.Run("Welcome Page", func(t *testing.T) {
 		// Ensure rootDir is empty/exists but has no index.html
 		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Accept", "text/html")
 		w := httptest.NewRecorder()
 
 		ServeStatic(w, req, rootDir)
@@ -46,8 +48,8 @@ func TestServeStatic_CustomPages(t *testing.T) {
 		}
 
 		body := w.Body.String()
-		if !strings.Contains(body, "Welcome to GoUp") {
-			t.Error("Expected body to contain 'Welcome to GoUp'")
+		if !strings.Contains(body, "Index of") {
+			t.Errorf("Expected body to contain 'Index of' (directory listing), got: %s", body)
 		}
 		if !strings.Contains(body, "<!DOCTYPE html>") {
 			t.Error("Expected HTML response (template execution), got fallback text")
