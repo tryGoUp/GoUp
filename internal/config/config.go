@@ -39,6 +39,7 @@ type SiteConfig struct {
 	BufferSizeKB             int               `json:"buffer_size_kb"`
 	MaxConcurrentConnections int               `json:"max_concurrent_connections"`
 	EnableLogging            *bool             `json:"enable_logging,omitempty"` // Default true if nil
+	FileServerMode           bool              `json:"file_server_mode"`         // Disables custom pages, enables directory listing
 
 	PluginConfigs map[string]interface{} `json:"plugin_configs"`
 }
