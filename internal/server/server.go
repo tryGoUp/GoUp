@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/armon/go-radix"
@@ -201,13 +201,22 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 	serverConf := config.SiteConfig{Port: port}
 
 	mainHandler := func(w_ http.ResponseWriter, r_ *http.Request) {
-		host := r_.Host
-		if colonIndex := strings.Index(host, ":"); colonIndex != -1 {
-			host = host[:colonIndex]
+		host, _, err := net.SplitHostPort(r_.Host)
+		if err != nil {
+			// Host might not have a port (e.g. "example.com")
+			host = r_.Host
 		}
+
+		lg.Debugf("Virtual host lookup for host: '%s' (raw: '%s')", host, r_.Host)
+
 		if h, found := radixTree.Get(host); found {
 			h.(http.Handler).ServeHTTP(w_, r_)
 		} else {
+			lg.Warnf("Host NOT FOUND in radix tree: '%s'. Registered domains for this port:", host)
+			radixTree.Walk(func(s string, v any) bool {
+				lg.Warnf("  - %s", s)
+				return false
+			})
 			assets.RenderErrorPage(w_, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
 		}
 	}
