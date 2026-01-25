@@ -1,0 +1,6 @@
+{
+    "domain": "www.test.local",
+    "port": 8090,
+    "root_directory": "/tmp/goup-test-site",
+    "file_server_mode": true
+}

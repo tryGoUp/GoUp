@@ -17,12 +17,19 @@ import (
 var tuiMode bool
 var benchMode bool
 var configPath string
+var globalConfigPath string
 
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
 	Use:   "goup",
 	Short: "GoUP is a minimal configurable web server",
 	Long:  `GoUP is a minimal configurable web server written in Go.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if err := config.LoadGlobalConfig(globalConfigPath); err != nil {
+			fmt.Printf("Error loading global config: %v\n", err)
+			os.Exit(1)
+		}
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -37,6 +44,8 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	rootCmd.AddCommand(genPassCmd)
 	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(startWebCmd)
+	rootCmd.AddCommand(startDNSCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(pluginsCmd)
@@ -45,7 +54,8 @@ func init() {
 	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to specific configuration file")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to specific site configuration file")
+	rootCmd.PersistentFlags().StringVar(&globalConfigPath, "global-config", "", "Path to specific global configuration file")
 }
 
 var generateCmd = &cobra.Command{
@@ -155,21 +165,10 @@ var startCmd = &cobra.Command{
 }
 
 func start(cmd *cobra.Command, args []string) {
-	var configs []config.SiteConfig
-	var err error
-
-	if configPath != "" {
-		configs, err = config.LoadConfigsFromFile(configPath)
-		if err != nil {
-			fmt.Printf("Error loading config from %s: %v\n", configPath, err)
-			os.Exit(1)
-		}
-	} else {
-		configs, err = config.LoadAllConfigs()
-		if err != nil {
-			fmt.Printf("Error loading configurations: %v\n", err)
-			os.Exit(1)
-		}
+	configs, err := loadConfigs()
+	if err != nil {
+		fmt.Printf("Error loading configurations: %v\n", err)
+		os.Exit(1)
 	}
 
 	if len(configs) == 0 {
@@ -181,14 +180,61 @@ func start(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("Starting servers...")
-	server.StartServers(configs, tuiMode, benchMode)
+	fmt.Println("Starting full GoUp server (Web + DNS)...")
+	server.StartServers(configs, tuiMode, benchMode, server.ModeAll)
 
 	// Wait indefinitely if not in TUI mode, the servers will keep running
 	// and loggers will keep writing to both the stdout and the log files.
 	if !tuiMode {
 		select {}
 	}
+}
+
+var startWebCmd = &cobra.Command{
+	Use:   "start-web",
+	Short: "Start only the web server",
+	Run:   startWeb,
+}
+
+func startWeb(cmd *cobra.Command, args []string) {
+	configs, err := loadConfigs()
+	if err != nil {
+		fmt.Printf("Error loading configurations: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Starting GoUp Web Server...")
+	server.StartServers(configs, tuiMode, benchMode, server.ModeWeb)
+
+	if !tuiMode {
+		select {}
+	}
+}
+
+var startDNSCmd = &cobra.Command{
+	Use:   "start-dns",
+	Short: "Start only the DNS server",
+	Run:   startDNS,
+}
+
+func startDNS(cmd *cobra.Command, args []string) {
+	// We might not strictly need site configs for DNS only, but StartServers expects them
+	// effectively ignoring them if ModeWeb is not set, except for context setup.
+	configs, _ := loadConfigs()
+
+	fmt.Println("Starting GoUp DNS Server...")
+	server.StartServers(configs, tuiMode, benchMode, server.ModeDNS)
+
+	if !tuiMode {
+		select {}
+	}
+}
+
+func loadConfigs() ([]config.SiteConfig, error) {
+	if configPath != "" {
+		return config.LoadConfigsFromFile(configPath)
+	}
+	return config.LoadAllConfigs()
 }
 
 var validateCmd = &cobra.Command{

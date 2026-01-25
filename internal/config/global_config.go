@@ -28,6 +28,7 @@ type GlobalConfig struct {
 	DashboardPort  int             `json:"dashboard_port"`
 	EnabledPlugins []string        `json:"enabled_plugins"` // empty means all enabled
 	SafeGuard      SafeGuardConfig `json:"safeguard"`
+	DNS            *DNSConfig      `json:"dns"`
 }
 
 // GlobalConf is the global configuration in memory.
@@ -35,15 +36,22 @@ var GlobalConf *GlobalConfig
 var globalConfName = "conf.global.json"
 
 // LoadGlobalConfig loads the global configuration file.
-func LoadGlobalConfig() error {
-	configDir := GetConfigDir()
-	configFile := filepath.Join(configDir, globalConfName)
+func LoadGlobalConfig(customPath string) error {
+	var configFile string
+	if customPath != "" {
+		configFile = customPath
+	} else {
+		configDir := GetConfigDir()
+		configFile = filepath.Join(configDir, globalConfName)
+	}
+
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		GlobalConf = &GlobalConfig{
 			EnableAPI:      false,
 			APIPort:        6007,
 			DashboardPort:  0, // Disabled by default
 			EnabledPlugins: []string{},
+			DNS:            DefaultDNSConfig(),
 		}
 		return nil
 	}
