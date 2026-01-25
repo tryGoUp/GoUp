@@ -14,9 +14,14 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 - Support for SSL/TLS with custom certificates
 - Custom headers for HTTP responses
 - Support for multiple domains and virtual hosting
+- Native Authoritative DNS Server (A, AAAA, CNAME, TXT, MX, NS)
 - Logging to both console and files - JSON formatted (structured logs)
 - Optional TUI interface for real-time monitoring
 - HTTP/2 and HTTP/3 support (not configurable, HTTP/1.1 is used for unencrypted connections, HTTP/2 and HTTP/3 for encrypted connections)
+
+## Documentation
+
+- [DNS Server Guide](docs/dns.md) explanation of the DNS module configuration and usage.
 
 ## Future Plans
 
@@ -94,8 +99,22 @@ Go is required to build the software, ensure you have it installed on your syste
 
 2. **Build the software:**
 
+   Standard build (includes both Web and DNS modules):
    ```bash
    go build -o ~/.local/bin/goup cmd/goup/main.go
+   ```
+
+   **Specialized Builds**:
+   You can build optimized binaries using build tags to exclude unused modules:
+
+   *Web Server Only*:
+   ```bash
+   go build -tags web_only -o goup-web cmd/goup/main.go
+   ```
+
+   *DNS Server Only*:
+   ```bash
+   go build -tags dns_only -o goup-dns cmd/goup/main.go
    ```
 
 
