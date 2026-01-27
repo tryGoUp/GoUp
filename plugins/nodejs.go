@@ -56,7 +56,7 @@ func (p *NodeJSPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logge
 		return nil
 	}
 	cfg := NodeJSPluginConfig{}
-	if rawMap, ok := pluginConfigRaw.(map[string]interface{}); ok {
+	if rawMap, ok := pluginConfigRaw.(map[string]any); ok {
 		// Use BasePlugin's IsEnabled method to determine if the plugin is enabled.
 		cfg.Enable = p.IsEnabled(rawMap)
 		if port, ok := rawMap["port"].(string); ok {
@@ -77,7 +77,7 @@ func (p *NodeJSPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logge
 		if packageManager, ok := rawMap["package_manager"].(string); ok {
 			cfg.PackageManager = packageManager
 		}
-		if proxyPaths, ok := rawMap["proxy_paths"].([]interface{}); ok {
+		if proxyPaths, ok := rawMap["proxy_paths"].([]any); ok {
 			for _, pathVal := range proxyPaths {
 				if pathStr, ok := pathVal.(string); ok {
 					cfg.ProxyPaths = append(cfg.ProxyPaths, pathStr)

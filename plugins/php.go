@@ -46,7 +46,7 @@ func (p *PHPPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logger.L
 	}
 
 	cfg := PHPPluginConfig{}
-	if rawMap, ok := pluginConfigRaw.(map[string]interface{}); ok {
+	if rawMap, ok := pluginConfigRaw.(map[string]any); ok {
 		// Use BasePlugin's IsEnabled method to determine if the plugin is enabled.
 		cfg.Enable = p.IsEnabled(rawMap)
 		if fpmAddr, ok := rawMap["fpm_addr"].(string); ok {

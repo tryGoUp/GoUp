@@ -17,7 +17,7 @@ import (
 func LoggingMiddleware(l *logger.Logger, domain string, identifier string) MiddlewareFunc {
 	// sync.Pool for responseWriter to reduce allocation (Operation "31")
 	rwPool := sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &responseWriter{}
 		},
 	}

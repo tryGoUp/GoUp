@@ -97,7 +97,7 @@ var (
 
 	globalBytePool = &byteSlicePool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return make([]byte, 32*1024)
 			},
 		},
@@ -154,7 +154,7 @@ func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputi
 	if conf.BufferSizeKB > 0 {
 		rp.BufferPool = &byteSlicePool{
 			pool: sync.Pool{
-				New: func() interface{} {
+				New: func() any {
 					return make([]byte, conf.BufferSizeKB*1024)
 				},
 			},

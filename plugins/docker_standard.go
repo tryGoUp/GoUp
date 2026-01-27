@@ -58,7 +58,7 @@ func (d *DockerStandardPlugin) OnInitForSite(conf config.SiteConfig, domainLogge
 	var cfg DockerStandardConfig
 	raw, ok := conf.PluginConfigs[d.Name()]
 	if ok {
-		if rawMap, ok := raw.(map[string]interface{}); ok {
+		if rawMap, ok := raw.(map[string]any); ok {
 			cfg.Enable = d.IsEnabled(rawMap)
 			if v, ok := rawMap["dockerfile_path"].(string); ok {
 				cfg.DockerfilePath = v
@@ -72,7 +72,7 @@ func (d *DockerStandardPlugin) OnInitForSite(conf config.SiteConfig, domainLogge
 			if v, ok := rawMap["cli_command"].(string); ok {
 				cfg.CLICommand = v
 			}
-			if v, ok := rawMap["build_args"].(map[string]interface{}); ok {
+			if v, ok := rawMap["build_args"].(map[string]any); ok {
 				cfg.BuildArgs = make(map[string]string)
 				for key, val := range v {
 					if s, ok := val.(string); ok {
@@ -80,14 +80,14 @@ func (d *DockerStandardPlugin) OnInitForSite(conf config.SiteConfig, domainLogge
 					}
 				}
 			}
-			if v, ok := rawMap["run_args"].([]interface{}); ok {
+			if v, ok := rawMap["run_args"].([]any); ok {
 				for _, arg := range v {
 					if s, ok := arg.(string); ok {
 						cfg.RunArgs = append(cfg.RunArgs, s)
 					}
 				}
 			}
-			if v, ok := rawMap["proxy_paths"].([]interface{}); ok {
+			if v, ok := rawMap["proxy_paths"].([]any); ok {
 				for _, p := range v {
 					if s, ok := p.(string); ok {
 						cfg.ProxyPaths = append(cfg.ProxyPaths, s)

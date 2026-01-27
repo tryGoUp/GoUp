@@ -62,7 +62,7 @@ func (p *PythonPlugin) OnInitForSite(conf config.SiteConfig, baseLogger *logger.
 	}
 
 	cfg := PythonPluginConfig{}
-	if rawMap, ok := raw.(map[string]interface{}); ok {
+	if rawMap, ok := raw.(map[string]any); ok {
 		// Use BasePlugin's IsEnabled method to determine if the plugin is enabled.
 		cfg.Enable = p.IsEnabled(rawMap)
 		if v, ok := rawMap["port"].(string); ok {
@@ -83,7 +83,7 @@ func (p *PythonPlugin) OnInitForSite(conf config.SiteConfig, baseLogger *logger.
 		if v, ok := rawMap["install_deps"].(bool); ok {
 			cfg.InstallDeps = v
 		}
-		if envVars, ok := rawMap["env_vars"].(map[string]interface{}); ok {
+		if envVars, ok := rawMap["env_vars"].(map[string]any); ok {
 			tmp := make(map[string]string)
 			for k, val := range envVars {
 				if s, ok := val.(string); ok {
@@ -92,7 +92,7 @@ func (p *PythonPlugin) OnInitForSite(conf config.SiteConfig, baseLogger *logger.
 			}
 			cfg.EnvVars = tmp
 		}
-		if proxyPaths, ok := rawMap["proxy_paths"].([]interface{}); ok {
+		if proxyPaths, ok := rawMap["proxy_paths"].([]any); ok {
 			for _, pathVal := range proxyPaths {
 				if pathStr, ok := pathVal.(string); ok {
 					cfg.ProxyPaths = append(cfg.ProxyPaths, pathStr)

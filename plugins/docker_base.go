@@ -52,7 +52,7 @@ func (d *DockerBasePlugin) OnInitForSite(conf config.SiteConfig, domainLogger *l
 	var cfg DockerBaseConfig
 	raw, ok := conf.PluginConfigs[d.Name()]
 	if ok {
-		if rawMap, ok := raw.(map[string]interface{}); ok {
+		if rawMap, ok := raw.(map[string]any); ok {
 			cfg.Enable = d.IsEnabled(rawMap)
 			if v, ok := rawMap["mode"].(string); ok {
 				cfg.Mode = v

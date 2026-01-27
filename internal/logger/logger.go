@@ -15,7 +15,7 @@ import (
 
 var loggerBytePool = &byteSlicePool{
 	pool: sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return make([]byte, 8*1024)
 		},
 	},
@@ -35,7 +35,7 @@ func (b *byteSlicePool) Put(buf []byte) {
 
 // Fields is a map of string keys to arbitrary values, emulating logrus.Fields
 // for compatibility with existing code.
-type Fields map[string]interface{}
+type Fields map[string]any
 
 // Logger wraps a zerolog.Logger while exposing methods similar to logrus.
 type Logger struct {
@@ -63,7 +63,7 @@ func ColoredConsoleWriter(out io.Writer) zerolog.ConsoleWriter {
 	return zerolog.ConsoleWriter{
 		Out:        out,
 		TimeFormat: "15:04:05",
-		FormatLevel: func(i interface{}) string {
+		FormatLevel: func(i any) string {
 			level := i.(string)
 			switch level {
 			case "info":
@@ -87,7 +87,7 @@ func (l *Logger) Info(msg string) {
 }
 
 // Infof logs a formatted message at Info level.
-func (l *Logger) Infof(format string, args ...interface{}) {
+func (l *Logger) Infof(format string, args ...any) {
 	l.base.Info().Msgf(format, args...)
 }
 
@@ -97,7 +97,7 @@ func (l *Logger) Error(msg string) {
 }
 
 // Errorf logs a formatted message at Error level.
-func (l *Logger) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...any) {
 	l.base.Error().Msgf(format, args...)
 }
 
@@ -107,7 +107,7 @@ func (l *Logger) Debug(msg string) {
 }
 
 // Debugf logs a formatted message at Debug level.
-func (l *Logger) Debugf(format string, args ...interface{}) {
+func (l *Logger) Debugf(format string, args ...any) {
 	l.base.Debug().Msgf(format, args...)
 }
 
@@ -117,7 +117,7 @@ func (l *Logger) Warn(msg string) {
 }
 
 // Warnf logs a formatted message at Warn level.
-func (l *Logger) Warnf(format string, args ...interface{}) {
+func (l *Logger) Warnf(format string, args ...any) {
 	l.base.Warn().Msgf(format, args...)
 }
 

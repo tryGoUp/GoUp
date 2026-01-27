@@ -113,11 +113,11 @@ func validateSiteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(errs) > 0 {
-		jsonResponse(w, map[string]interface{}{
+		jsonResponse(w, map[string]any{
 			"valid":  false,
 			"errors": errs,
 		})
 		return
 	}
-	jsonResponse(w, map[string]interface{}{"valid": true})
+	jsonResponse(w, map[string]any{"valid": true})
 }

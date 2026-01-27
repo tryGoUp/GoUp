@@ -24,7 +24,7 @@ var compressibleTypes = map[string]bool{
 
 // gzipWriterPool for reusing gzip writers
 var gzipWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return gzip.NewWriter(io.Discard)
 	},
 }

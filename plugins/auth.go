@@ -79,11 +79,11 @@ func (p *AuthPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logger.
 		Enable: false,
 	}
 
-	if rawMap, ok := pluginConfigRaw.(map[string]interface{}); ok {
+	if rawMap, ok := pluginConfigRaw.(map[string]any); ok {
 		authConfig.Enable = p.IsEnabled(rawMap)
 
 		// ProtectedPaths
-		if paths, ok := rawMap["protected_paths"].([]interface{}); ok {
+		if paths, ok := rawMap["protected_paths"].([]any); ok {
 			for _, path := range paths {
 				if pStr, ok := path.(string); ok {
 					authConfig.ProtectedPaths = append(authConfig.ProtectedPaths, pStr)
@@ -92,7 +92,7 @@ func (p *AuthPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logger.
 		}
 
 		// Credentials
-		if creds, ok := rawMap["credentials"].(map[string]interface{}); ok {
+		if creds, ok := rawMap["credentials"].(map[string]any); ok {
 			authConfig.Credentials = make(map[string]string)
 			for user, pass := range creds {
 				if passStr, ok := pass.(string); ok {

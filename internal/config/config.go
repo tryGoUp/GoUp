@@ -41,7 +41,7 @@ type SiteConfig struct {
 	EnableLogging            *bool             `json:"enable_logging,omitempty"` // Default true if nil
 	FileServerMode           bool              `json:"file_server_mode"`         // Disables custom pages, enables directory listing
 
-	PluginConfigs map[string]interface{} `json:"plugin_configs"`
+	PluginConfigs map[string]any `json:"plugin_configs"`
 }
 
 // GetConfigDir returns the directory where configuration files are stored.
@@ -85,7 +85,7 @@ func LoadConfig(filePath string) (SiteConfig, error) {
 		return conf, err
 	}
 	if conf.PluginConfigs == nil {
-		conf.PluginConfigs = make(map[string]interface{})
+		conf.PluginConfigs = make(map[string]any)
 	}
 	return conf, nil
 }
@@ -104,7 +104,7 @@ func LoadConfigsFromFile(filePath string) ([]SiteConfig, error) {
 		// Ensure plugin configs map is initialized for each
 		for i := range configs {
 			if configs[i].PluginConfigs == nil {
-				configs[i].PluginConfigs = make(map[string]interface{})
+				configs[i].PluginConfigs = make(map[string]any)
 			}
 		}
 		return configs, nil
@@ -114,7 +114,7 @@ func LoadConfigsFromFile(filePath string) ([]SiteConfig, error) {
 	var conf SiteConfig
 	if err := json.Unmarshal(data, &conf); err == nil {
 		if conf.PluginConfigs == nil {
-			conf.PluginConfigs = make(map[string]interface{})
+			conf.PluginConfigs = make(map[string]any)
 		}
 		return []SiteConfig{conf}, nil
 	}

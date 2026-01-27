@@ -2,8 +2,8 @@ package api
 
 import (
 	"io/fs"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -24,7 +24,7 @@ func getLogsHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if !info.IsDir() {
-			data, readErr := ioutil.ReadFile(path)
+			data, readErr := os.ReadFile(path)
 			if readErr != nil {
 				return readErr
 			}
@@ -45,7 +45,7 @@ func getMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	atomic.AddUint64(&requestsTotal, 1)
 	cpuPercent, _ := cpu.Percent(0, false)
 	vm, _ := mem.VirtualMemory()
-	metrics := map[string]interface{}{
+	metrics := map[string]any{
 		"requests_total": atomic.LoadUint64(&requestsTotal),
 		"latency_avg_ms": 0,
 		"cpu_usage":      cpuPercent,
@@ -57,7 +57,7 @@ func getMetricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStatusHandler(w http.ResponseWriter, r *http.Request) {
-	status := map[string]interface{}{
+	status := map[string]any{
 		"uptime":   time.Since(startTime).String(),
 		"sites":    len(config.SiteConfigs),
 		"plugins":  config.GlobalConf.EnabledPlugins,
@@ -82,7 +82,7 @@ func getLogWeightHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error calculating log weight", http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, map[string]interface{}{
+	jsonResponse(w, map[string]any{
 		"log_weight_bytes": totalSize,
 	})
 }

@@ -28,7 +28,7 @@ func InitAsyncLogger(bufferSize int) {
 	globalAsyncLogger = &AsyncLogger{
 		logChan: make(chan *LogEntry, bufferSize),
 		logEntryPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &LogEntry{
 					Fields: make(logger.Fields),
 				}

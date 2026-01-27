@@ -55,7 +55,7 @@ func togglePluginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, map[string]interface{}{
+	jsonResponse(w, map[string]any{
 		"name":    pName,
 		"enabled": isPluginEnabled(pName),
 	})
