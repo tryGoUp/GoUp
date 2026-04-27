@@ -3,10 +3,14 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
+	"github.com/mirkobrombin/goup/internal/pidfile"
 	"github.com/mirkobrombin/goup/internal/plugin"
 	"github.com/mirkobrombin/goup/internal/server"
 	"github.com/spf13/cobra"
@@ -49,6 +53,8 @@ func init() {
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(pluginsCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(restartCmd)
 
 	startCmd.Flags().BoolVarP(&tuiMode, "tui", "t", false, "Enable TUI mode")
 	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
@@ -180,13 +186,20 @@ func start(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Write PID file
+	if err := pidfile.Write(); err != nil {
+		fmt.Printf("Warning: could not write PID file: %v\n", err)
+	}
+
 	fmt.Println("Starting full GoUp server (Web + DNS)...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeAll)
 
-	// Wait indefinitely if not in TUI mode, the servers will keep running
-	// and loggers will keep writing to both the stdout and the log files.
 	if !tuiMode {
-		select {}
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		pidfile.Remove()
 	}
 }
 
@@ -203,11 +216,19 @@ func startWeb(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	if err := pidfile.Write(); err != nil {
+		fmt.Printf("Warning: could not write PID file: %v\n", err)
+	}
+
 	fmt.Println("Starting GoUp Web Server...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeWeb)
 
 	if !tuiMode {
-		select {}
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		pidfile.Remove()
 	}
 }
 
@@ -218,15 +239,21 @@ var startDNSCmd = &cobra.Command{
 }
 
 func startDNS(cmd *cobra.Command, args []string) {
-	// We might not strictly need site configs for DNS only, but StartServers expects them
-	// effectively ignoring them if ModeWeb is not set, except for context setup.
 	configs, _ := loadConfigs()
+
+	if err := pidfile.Write(); err != nil {
+		fmt.Printf("Warning: could not write PID file: %v\n", err)
+	}
 
 	fmt.Println("Starting GoUp DNS Server...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeDNS)
 
 	if !tuiMode {
-		select {}
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		pidfile.Remove()
 	}
 }
 
@@ -235,6 +262,69 @@ func loadConfigs() ([]config.SiteConfig, error) {
 		return config.LoadConfigsFromFile(configPath)
 	}
 	return config.LoadAllConfigs()
+}
+
+var stopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop the running server",
+	Run: func(cmd *cobra.Command, args []string) {
+		pid, err := pidfile.Read()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			fmt.Printf("Error finding process %d: %v\n", pid, err)
+			os.Exit(1)
+		}
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			fmt.Printf("Error sending signal: %v\n", err)
+			os.Exit(1)
+		}
+		done := make(chan struct{})
+		go func() {
+			proc.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			fmt.Println("Server stopped.")
+		case <-time.After(10 * time.Second):
+			fmt.Println("Server did not stop in time, forcing...")
+			proc.Kill()
+		}
+		pidfile.Remove()
+	},
+}
+
+var restartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart the server",
+	Run: func(cmd *cobra.Command, args []string) {
+		pid, err := pidfile.Read()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			fmt.Printf("Error finding process %d: %v\n", pid, err)
+			os.Exit(1)
+		}
+		proc.Signal(syscall.SIGTERM)
+		time.Sleep(500 * time.Millisecond)
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		argsEnv := os.Environ()
+		if err := syscall.Exec(exe, os.Args, argsEnv); err != nil {
+			fmt.Printf("Error restarting: %v\n", err)
+			os.Exit(1)
+		}
+	},
 }
 
 var validateCmd = &cobra.Command{
