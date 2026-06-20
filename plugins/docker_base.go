@@ -73,6 +73,13 @@ func (d *DockerBasePlugin) OnInitForSite(conf config.SiteConfig, domainLogger *l
 	}
 	d.Config = cfg
 
+	// If the Docker plugin is not enabled (or not configured) for this site,
+	// skip CLI resolution entirely so that a missing docker/podman binary does
+	// not break plugin init on machines that don't need Docker.
+	if !d.Config.Enable {
+		return nil
+	}
+
 	// Determine CLICommand if not set.
 	if d.Config.CLICommand == "" {
 		if _, err := exec.LookPath("docker"); err == nil {
