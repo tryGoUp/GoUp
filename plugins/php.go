@@ -16,6 +16,7 @@ import (
 type PHPPluginConfig struct {
 	Enable  bool   `json:"enable"`
 	FPMAddr string `json:"fpm_addr"`
+	RootDir string `json:"-"`
 }
 
 type PHPPlugin struct {
@@ -53,6 +54,12 @@ func (p *PHPPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logger.L
 			cfg.FPMAddr = fpmAddr
 		}
 	}
+	// Resolve the document root once so SCRIPT_FILENAME can be absolute.
+	if abs, err := filepath.Abs(conf.RootDirectory); err == nil {
+		cfg.RootDir = abs
+	} else {
+		cfg.RootDir = conf.RootDirectory
+	}
 	p.siteConfigs[conf.Domain] = cfg
 
 	return nil
@@ -71,12 +78,19 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 
-	// We only handle .php files.
-	if !strings.HasSuffix(r.URL.Path, ".php") {
+	// Map directory requests to their index.php (e.g. "/" -> "/index.php").
+	urlPath := r.URL.Path
+	if urlPath == "" || strings.HasSuffix(urlPath, "/") {
+		urlPath += "index.php"
+	}
+
+	// We only handle .php files; everything else falls through to the static
+	// file server (assets, css, js, images, ...).
+	if !strings.HasSuffix(urlPath, ".php") {
 		return false
 	}
 
-	p.DomainLogger.Infof("[PHPPlugin] Handling PHP request: %s (domain=%s)", r.URL.Path, host)
+	p.DomainLogger.Infof("[PHPPlugin] Handling PHP request: %s (domain=%s)", urlPath, host)
 
 	// If the user hasn't specified a FPM address, use default.
 	phpFPMAddr := cfg.FPMAddr
@@ -84,7 +98,13 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		phpFPMAddr = "127.0.0.1:9000"
 	}
 
-	scriptFilename := filepath.Join(".", r.URL.Path)
+	// Resolve the script against the configured document root so PHP-FPM gets
+	// an absolute SCRIPT_FILENAME regardless of its own working directory.
+	docRoot := cfg.RootDir
+	if docRoot == "" {
+		docRoot = "."
+	}
+	scriptFilename := filepath.Join(docRoot, filepath.Clean(urlPath))
 	if _, err := os.Stat(scriptFilename); os.IsNotExist(err) {
 		http.NotFound(w, r)
 		return true
@@ -102,12 +122,37 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 	fcgiHandler := gofast.NewHandler(
 		func(client gofast.Client, req *gofast.Request) (*gofast.ResponsePipe, error) {
 			req.Params["SCRIPT_FILENAME"] = scriptFilename
-			req.Params["DOCUMENT_ROOT"] = "."
+			req.Params["SCRIPT_NAME"] = urlPath
+			req.Params["DOCUMENT_ROOT"] = docRoot
 			req.Params["REQUEST_METHOD"] = r.Method
 			req.Params["SERVER_PROTOCOL"] = r.Proto
 			req.Params["REQUEST_URI"] = r.URL.RequestURI()
 			req.Params["QUERY_STRING"] = r.URL.RawQuery
 			req.Params["REMOTE_ADDR"] = r.RemoteAddr
+			// Pass host info so the app can build absolute URLs / redirects.
+			req.Params["HTTP_HOST"] = r.Host
+			serverName := r.Host
+			serverPort := ""
+			if i := strings.LastIndex(r.Host, ":"); i != -1 {
+				serverName = r.Host[:i]
+				serverPort = r.Host[i+1:]
+			}
+			req.Params["SERVER_NAME"] = serverName
+			if serverPort != "" {
+				req.Params["SERVER_PORT"] = serverPort
+			}
+			if r.TLS != nil {
+				req.Params["HTTPS"] = "on"
+			}
+			if ct := r.Header.Get("Content-Type"); ct != "" {
+				req.Params["CONTENT_TYPE"] = ct
+			}
+			if cl := r.Header.Get("Content-Length"); cl != "" {
+				req.Params["CONTENT_LENGTH"] = cl
+			}
+			if c := r.Header.Get("Cookie"); c != "" {
+				req.Params["HTTP_COOKIE"] = c
+			}
 			return gofast.BasicSession(client, req)
 		},
 		clientFactory,
