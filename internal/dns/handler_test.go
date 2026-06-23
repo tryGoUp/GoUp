@@ -58,7 +58,7 @@ func TestDNSHandler_ServeDNS(t *testing.T) {
 			name:     "NXDOMAIN for non-existent",
 			qname:    "foo.example.com.",
 			qtype:    dns.TypeA,
-			wantCode: dns.RcodeSuccess,
+			wantCode: dns.RcodeNameError,
 			wantAns:  0,
 		},
 		{
