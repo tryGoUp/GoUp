@@ -22,6 +22,7 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 ## Documentation
 
 - [DNS Server Guide](docs/dns.md) explanation of the DNS module configuration and usage.
+- [Kamal Proxy Guide](docs/kamal-proxy.md) for blue/green deployments with kamal-proxy.
 
 ## Future Plans
 

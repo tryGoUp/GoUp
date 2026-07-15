@@ -23,7 +23,7 @@ func createHTTPServer(conf config.SiteConfig, handler http.Handler) *http.Server
 
 	s := &http.Server{
 		Addr:         fmt.Sprintf(":%d", conf.Port),
-		Handler:      handler,
+		Handler:      withHealthCheck(handler),
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 		TLSConfig: &tls.Config{
@@ -46,6 +46,8 @@ func createHTTPServer(conf config.SiteConfig, handler http.Handler) *http.Server
 
 // startServerInstance starts the HTTP server instance.
 func startServerInstance(server *http.Server, conf config.SiteConfig, l *logger.Logger) {
+	registerServer(server)
+
 	go func() {
 		if conf.SSL.Enabled {
 			// SSL/TLS configuration
