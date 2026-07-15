@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"bufio"
 	"compress/gzip"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -152,4 +154,48 @@ func (w *smartGzipWriter) Close() {
 		w.gzipWriter.Close()
 		gzipWriterPool.Put(w.gzipWriter)
 	}
+}
+
+// ReadFrom keeps the underlying ResponseWriter's fast path (sendfile) alive
+// when no compression happens; http.ServeContent uses io.Copy, which probes
+// for io.ReaderFrom on the writer it is handed.
+func (w *smartGzipWriter) ReadFrom(src io.Reader) (int64, error) {
+	if !w.checked {
+		// Headers were not written yet (raw handlers): decide now with the
+		// headers set so far.
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.shouldCompress {
+		return io.Copy(w.gzipWriter, src)
+	}
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(src)
+	}
+	return io.Copy(w.ResponseWriter, src)
+}
+
+// Flush forwards streaming flushes (SSE, chunked responses).
+func (w *smartGzipWriter) Flush() {
+	if w.shouldCompress && w.gzipWriter != nil {
+		w.gzipWriter.Flush()
+	}
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijack lets WebSocket and other upgraders take over the connection.
+func (w *smartGzipWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+// Push forwards HTTP/2 server pushes.
+func (w *smartGzipWriter) Push(target string, opts *http.PushOptions) error {
+	if p, ok := w.ResponseWriter.(http.Pusher); ok {
+		return p.Push(target, opts)
+	}
+	return http.ErrNotSupported
 }

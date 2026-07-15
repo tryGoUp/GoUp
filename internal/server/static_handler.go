@@ -29,7 +29,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 		return
 	}
 
-	info, err := os.Stat(fullPath)
+	info, err := cachedStat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if isBrowser(r) {
@@ -65,7 +65,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 		}
 
 		indexPath := filepath.Join(fullPath, "index.html")
-		indexInfo, err := os.Stat(indexPath)
+		indexInfo, err := cachedStat(indexPath)
 		if err == nil && !indexInfo.IsDir() {
 			fullPath = indexPath
 			info = indexInfo
@@ -124,7 +124,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 
 	if strings.Contains(acceptEncoding, "br") {
 		brPath := fullPath + ".br"
-		if brInfo, err := os.Stat(brPath); err == nil && !brInfo.IsDir() {
+		if brInfo, err := cachedStat(brPath); err == nil && !brInfo.IsDir() {
 			servePath = brPath
 			serveInfo = brInfo
 			contentEncoding = "br"
@@ -134,7 +134,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 
 	if !servedCompressed && strings.Contains(acceptEncoding, "gzip") {
 		gzPath := fullPath + ".gz"
-		if gzInfo, err := os.Stat(gzPath); err == nil && !gzInfo.IsDir() {
+		if gzInfo, err := cachedStat(gzPath); err == nil && !gzInfo.IsDir() {
 			servePath = gzPath
 			serveInfo = gzInfo
 			contentEncoding = "gzip"

@@ -79,10 +79,11 @@ func BenchmarkAddCustomHeaders(b *testing.B) {
 		"Referrer-Policy":        "no-referrer",
 		"Permissions-Policy":     "geolocation=()",
 	}
+	expose := joinHeaderNames(headers)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
-		addCustomHeaders(w, headers)
+		addCustomHeaders(w, headers, expose)
 	}
 }

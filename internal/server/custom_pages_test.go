@@ -60,6 +60,9 @@ func TestServeStatic_CustomPages(t *testing.T) {
 	t.Run("Index Existing", func(t *testing.T) {
 		indexContent := "<html>Index</html>"
 		os.WriteFile(filepath.Join(rootDir, "index.html"), []byte(indexContent), 0644)
+		// The previous subtest cached the missing index.html; drop the stat
+		// cache so the new file is visible immediately.
+		resetStatCache()
 
 		req := httptest.NewRequest("GET", "/", nil)
 		w := httptest.NewRecorder()

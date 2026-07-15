@@ -21,6 +21,10 @@ import (
 func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string, globalMwManager *middleware.MiddlewareManager) (http.Handler, error) {
 	var handler http.Handler
 
+	// Precompute the expose-headers value once per site instead of joining
+	// header names on every request.
+	exposeHeaders := joinHeaderNames(conf.CustomHeaders)
+
 	if conf.ProxyPass != "" {
 		// Set up reverse proxy handler if ProxyPass is set.
 		proxy, err := getSharedReverseProxy(conf, log)
@@ -29,14 +33,14 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 		}
 
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			addCustomHeaders(w, conf.CustomHeaders)
+			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
 			proxy.ServeHTTP(w, r)
 		})
 
 	} else {
 		// Static File Handler with custom design and directory listing
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			addCustomHeaders(w, conf.CustomHeaders)
+			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
 			ServeStatic(w, r, conf.RootDirectory)
 		})
 	}
@@ -77,18 +81,23 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 	return handler, nil
 }
 
-// addCustomHeaders adds custom headers to the HTTP response.
-func addCustomHeaders(w http.ResponseWriter, headers map[string]string) {
-	for key, value := range headers {
-		w.Header().Set(key, value)
-	}
-
-	exposeHeaders := make([]string, 0, len(headers))
+// joinHeaderNames builds the Access-Control-Expose-Headers value for a set of
+// custom headers.
+func joinHeaderNames(headers map[string]string) string {
+	names := make([]string, 0, len(headers))
 	for key := range headers {
-		exposeHeaders = append(exposeHeaders, key)
+		names = append(names, key)
 	}
+	return strings.Join(names, ", ")
+}
 
-	w.Header().Set("Access-Control-Expose-Headers", strings.Join(exposeHeaders, ", "))
+// addCustomHeaders adds custom headers to the HTTP response.
+func addCustomHeaders(w http.ResponseWriter, headers map[string]string, exposeHeaders string) {
+	h := w.Header()
+	for key, value := range headers {
+		h.Set(key, value)
+	}
+	h.Set("Access-Control-Expose-Headers", exposeHeaders)
 }
 
 var (
