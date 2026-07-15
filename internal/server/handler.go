@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -93,7 +94,21 @@ func addCustomHeaders(w http.ResponseWriter, headers map[string]string) {
 var (
 	sharedProxyMap   = make(map[string]*httputil.ReverseProxy)
 	sharedProxyMapMu sync.Mutex
-	defaultTransport = &http.Transport{}
+	// defaultTransport mirrors http.DefaultTransport but with a larger idle
+	// pool, so proxied sites reuse backend connections under load.
+	defaultTransport = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          512,
+		MaxIdleConnsPerHost:   128,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 
 	globalBytePool = &byteSlicePool{
 		pool: sync.Pool{

@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -236,57 +235,15 @@ func (p *PythonPlugin) proxyToPython(domain string, w http.ResponseWriter, r *ht
 		return
 	}
 
-	targetURL := fmt.Sprintf("http://localhost:%s%s", st.config.Port, r.URL.Path)
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
+	p.DomainLogger.Infof("[PythonPlugin] Delegating path=%s to Python (domain=%s)", r.URL.Path, domain)
 
-	p.DomainLogger.Infof("[PythonPlugin] Delegating path=%s to Python", targetURL)
-
-	bodyData, err := io.ReadAll(r.Body)
+	proxy, err := upstreamProxy("http://localhost:"+st.config.Port, p.PluginLogger)
 	if err != nil {
-		p.PluginLogger.Errorf("Failed to read request body: %v", err)
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-
-	req, err := http.NewRequest(r.Method, targetURL, strings.NewReader(string(bodyData)))
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to create request for Python app: %v", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
-
-	for k, vals := range r.Header {
-		for _, val := range vals {
-			req.Header.Add(k, val)
-		}
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to connect to Python backend [%s]: %v", domain, err)
+		p.PluginLogger.Errorf("Failed to create proxy for Python app [%s]: %v", domain, err)
 		http.Error(w, "Python backend unavailable", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
-
-	for k, vals := range resp.Header {
-		for _, val := range vals {
-			w.Header().Add(k, val)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to read response from Python app [%s]: %v", domain, err)
-		http.Error(w, "Failed to read response from Python app", http.StatusInternalServerError)
-		return
-	}
-	w.Write(respBody)
+	proxy.ServeHTTP(w, r)
 }
 
 func (p *PythonPlugin) setupVenv(cfg PythonPluginConfig, systemPython string) string {

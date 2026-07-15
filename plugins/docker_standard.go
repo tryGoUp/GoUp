@@ -3,8 +3,6 @@ package plugins
 import (
 	"fmt"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -248,16 +246,11 @@ func (d *DockerStandardPlugin) ensureContainer(domain string) error {
 
 func (d *DockerStandardPlugin) proxyToContainer(targetURL string, w http.ResponseWriter, r *http.Request) bool {
 	d.DomainLogger.Infof("[DockerStandardPlugin] Proxying request to: %s", targetURL)
-	parsedURL, err := url.Parse(targetURL)
+	proxy, err := upstreamProxy(targetURL, d.PluginLogger)
 	if err != nil {
 		d.PluginLogger.Errorf("Error parsing URL: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return true
-	}
-	proxy := httputil.NewSingleHostReverseProxy(parsedURL)
-	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, e error) {
-		d.PluginLogger.Errorf("Proxy error: %v", e)
-		http.Error(w, "Proxy error", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)
 	return true

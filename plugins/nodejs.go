@@ -1,8 +1,6 @@
 package plugins
 
 import (
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -178,59 +176,16 @@ func (p *NodeJSPlugin) ensureNodeServerRunning(cfg NodeJSPluginConfig) {
 	}()
 }
 
-// proxyToNode forwards the request to Node.js and sends back the response.
+// proxyToNode forwards the request to Node.js, streaming both bodies through
+// a shared reverse proxy instead of buffering them in memory.
 func (p *NodeJSPlugin) proxyToNode(w http.ResponseWriter, r *http.Request, cfg NodeJSPluginConfig) {
-	nodeURL := fmt.Sprintf("http://localhost:%s%s", cfg.Port, r.URL.Path)
-	if r.URL.RawQuery != "" {
-		nodeURL += "?" + r.URL.RawQuery
-	}
-
-	bodyReader, err := io.ReadAll(r.Body)
+	proxy, err := upstreamProxy("http://localhost:"+cfg.Port, p.PluginLogger)
 	if err != nil {
-		p.PluginLogger.Errorf("Failed to read request body: %v", err)
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-
-	req, err := http.NewRequest(r.Method, nodeURL, strings.NewReader(string(bodyReader)))
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to create request for Node.js: %v", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
-
-	// Copy headers
-	for key, values := range r.Header {
-		for _, value := range values {
-			req.Header.Add(key, value)
-		}
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to connect to Node.js backend: %v", err)
+		p.PluginLogger.Errorf("Failed to create proxy for Node.js: %v", err)
 		http.Error(w, "Node.js backend unavailable", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
-
-	// Forward response headers.
-	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		p.PluginLogger.Errorf("Failed to read response from Node.js: %v", err)
-		http.Error(w, "Failed to read response from Node.js", http.StatusInternalServerError)
-		return
-	}
-	w.Write(body)
+	proxy.ServeHTTP(w, r)
 }
 
 // installDependencies installs dependencies using the configured package manager.
