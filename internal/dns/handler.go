@@ -3,17 +3,34 @@ package dns
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 )
 
-// DNSHandler implements the dns.Handler interface.
+// DNSHandler implements the dns.Handler interface. Records are indexed and
+// pre-compiled into dns.RR values at construction time, so serving a query is
+// two map lookups instead of a linear scan plus per-query record parsing.
 type DNSHandler struct {
 	Config *config.DNSConfig
 	Logger *logger.Logger
+
+	// zones is sorted by label length (longest first) so overlapping zones
+	// (e.g. "sub.example.com" inside "example.com") match deterministically.
+	zones []string
+	// rrIndex maps lowercase FQDN -> qtype -> pre-built answers.
+	rrIndex map[string]map[uint16][]dns.RR
+	// cnameIndex maps lowercase FQDN -> pre-built CNAME answer, returned for
+	// any query type on that name (RFC 1034).
+	cnameIndex map[string][]dns.RR
+	// names records every FQDN that exists in a zone, for NXDOMAIN vs NODATA.
+	names map[string]bool
+
+	client *dns.Client
 }
 
 // NewDNSHandler creates a new DNS handler.
@@ -22,10 +39,65 @@ func NewDNSHandler(conf *config.DNSConfig) (*DNSHandler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DNSHandler{
-		Config: conf,
-		Logger: l,
-	}, nil
+	h := &DNSHandler{
+		Config:     conf,
+		Logger:     l,
+		rrIndex:    make(map[string]map[uint16][]dns.RR),
+		cnameIndex: make(map[string][]dns.RR),
+		names:      make(map[string]bool),
+		client:     &dns.Client{Timeout: 5 * time.Second},
+	}
+	h.buildIndex()
+	return h, nil
+}
+
+// buildIndex pre-compiles every configured record into ready-to-serve RRs.
+func (h *DNSHandler) buildIndex() {
+	for zone, records := range h.Config.Zones {
+		h.zones = append(h.zones, strings.ToLower(zone))
+		zoneDot := strings.ToLower(zone) + "."
+
+		for _, rec := range records {
+			var fqdn string
+			if rec.Name == "@" {
+				fqdn = zoneDot
+			} else {
+				fqdn = strings.ToLower(rec.Name) + "." + zoneDot
+			}
+			h.names[fqdn] = true
+
+			rr, err := createRR(rec, fqdn)
+			if err != nil {
+				h.Logger.Errorf("Invalid DNS record %s %s in zone %s: %v", rec.Name, rec.Type, zone, err)
+				continue
+			}
+
+			if rec.Type == "CNAME" {
+				h.cnameIndex[fqdn] = append(h.cnameIndex[fqdn], rr)
+				continue
+			}
+
+			qtype := dns.StringToType[rec.Type]
+			if h.rrIndex[fqdn] == nil {
+				h.rrIndex[fqdn] = make(map[uint16][]dns.RR)
+			}
+			h.rrIndex[fqdn][qtype] = append(h.rrIndex[fqdn][qtype], rr)
+		}
+	}
+
+	sort.Slice(h.zones, func(i, j int) bool {
+		return len(h.zones[i]) > len(h.zones[j])
+	})
+}
+
+// matchZone returns the longest configured zone that is a suffix of name.
+func (h *DNSHandler) matchZone(name string) string {
+	for _, z := range h.zones {
+		if strings.HasSuffix(name, z+".") {
+			return z
+		}
+	}
+	return ""
 }
 
 // ServeDNS handles incoming DNS requests.
@@ -34,23 +106,10 @@ func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	msg.SetReply(r)
 	msg.Authoritative = true
 
-	// Log the query
-	clientIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
-	for _, q := range r.Question {
-		h.Logger.Infof("Query: %s %s from %s", q.Name, dns.TypeToString[q.Qtype], clientIP)
-	}
-
 	for _, q := range r.Question {
 		name := strings.ToLower(q.Name)
 
-		// Look for zone match
-		var zone string
-		for z := range h.Config.Zones {
-			if strings.HasSuffix(name, z+".") {
-				zone = z
-				break
-			}
-		}
+		zone := h.matchZone(name)
 
 		// If no zone found, try forwarding if configured
 		if zone == "" {
@@ -63,7 +122,7 @@ func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		}
 
 		// Zone found, handle records
-		answers, foundName := h.findRecords(zone, name, q.Qtype)
+		answers, foundName := h.findRecords(name, q.Qtype)
 		if len(answers) > 0 {
 			msg.Answer = append(msg.Answer, answers...)
 		} else if !foundName {
@@ -76,58 +135,35 @@ func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	w.WriteMsg(msg)
-}
 
-func (h *DNSHandler) findRecords(zone, qname string, qtype uint16) (answers []dns.RR, foundName bool) {
-	configRecords, ok := h.Config.Zones[zone]
-	if !ok {
-		return nil, false
-	}
-
-	zoneDot := zone + "."
-	var relative string
-	if qname == zoneDot {
-		relative = "@"
-	} else if strings.HasSuffix(qname, "."+zoneDot) {
-		relative = strings.TrimSuffix(qname, "."+zoneDot)
-	} else {
-		return nil, false
-	}
-
-	for _, rec := range configRecords {
-		if rec.Name == relative {
-			foundName = true
-
-			// CNAME handling (RFC 1034)
-			if rec.Type == "CNAME" {
-				if qtype == dns.TypeCNAME || qtype == dns.TypeANY {
-					rr, err := h.createRR(rec, qname)
-					if err == nil {
-						answers = append(answers, rr)
-					}
-				} else {
-					// We found a CNAME but requested another type.
-					// Authoritative server should return the CNAME.
-					rr, err := h.createRR(rec, qname)
-					if err == nil {
-						answers = append(answers, rr)
-					}
-				}
-				continue
-			}
-
-			if rec.Type == dns.TypeToString[qtype] {
-				rr, err := h.createRR(rec, qname)
-				if err == nil {
-					answers = append(answers, rr)
-				}
-			}
+	// Log after answering, off the response latency path.
+	if clientIP, _, err := net.SplitHostPort(w.RemoteAddr().String()); err == nil {
+		for _, q := range r.Question {
+			h.Logger.Debugf("Query: %s %s from %s", q.Name, dns.TypeToString[q.Qtype], clientIP)
 		}
 	}
+}
+
+func (h *DNSHandler) findRecords(qname string, qtype uint16) (answers []dns.RR, foundName bool) {
+	foundName = h.names[qname]
+	if !foundName {
+		return nil, false
+	}
+
+	if qtype != dns.TypeANY {
+		if byType, ok := h.rrIndex[qname]; ok {
+			answers = append(answers, byType[qtype]...)
+		}
+	}
+
+	// A CNAME answers any query type on its name (RFC 1034); for TypeANY the
+	// authoritative answer is the CNAME itself.
+	answers = append(answers, h.cnameIndex[qname]...)
+
 	return answers, foundName
 }
 
-func (h *DNSHandler) createRR(rec config.DNSRecord, qname string) (dns.RR, error) {
+func createRR(rec config.DNSRecord, qname string) (dns.RR, error) {
 	header := dns.RR_Header{
 		Name:   qname,
 		Rrtype: dns.StringToType[rec.Type],
@@ -158,13 +194,13 @@ func (h *DNSHandler) createRR(rec config.DNSRecord, qname string) (dns.RR, error
 }
 
 func (h *DNSHandler) handleForwarding(w dns.ResponseWriter, r *dns.Msg) {
-	// Simple forwarding
+	// Simple forwarding with a shared, reused client.
 	for _, upstream := range h.Config.UpstreamResolvers {
 		target := upstream
 		if !strings.Contains(target, ":") {
 			target += ":53"
 		}
-		resp, _, err := new(dns.Client).Exchange(r, target)
+		resp, _, err := h.client.Exchange(r, target)
 		if err == nil {
 			resp.Authoritative = false
 			w.WriteMsg(resp)
