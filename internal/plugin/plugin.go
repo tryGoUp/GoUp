@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
@@ -34,6 +35,10 @@ type PluginManager struct {
 	mu      sync.Mutex
 	plugins []Plugin
 	active  map[string]bool
+
+	// snapshot holds an immutable copy of the registered plugins so the
+	// request hot path can dispatch without taking the lock or copying.
+	snapshot atomic.Pointer[[]Plugin]
 }
 
 var (
@@ -72,6 +77,10 @@ func (pm *PluginManager) Register(p Plugin) {
 	defer pm.mu.Unlock()
 	pm.plugins = append(pm.plugins, p)
 	pm.active[p.Name()] = isPluginEnabled(p.Name())
+
+	snap := make([]Plugin, len(pm.plugins))
+	copy(snap, pm.plugins)
+	pm.snapshot.Store(&snap)
 }
 
 // InitPlugins calls OnInit on all registered plugins.
@@ -137,10 +146,11 @@ func isPluginEnabled(name string) bool {
 func PluginMiddleware(pm *PluginManager) middleware.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			pm.mu.Lock()
-			registered := make([]Plugin, len(pm.plugins))
-			copy(registered, pm.plugins)
-			pm.mu.Unlock()
+			// Read the immutable snapshot: no lock, no copy per request.
+			var registered []Plugin
+			if snap := pm.snapshot.Load(); snap != nil {
+				registered = *snap
+			}
 
 			// BeforeRequest
 			for _, plugin := range registered {
