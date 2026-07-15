@@ -191,15 +191,15 @@ func start(cmd *cobra.Command, args []string) {
 		fmt.Printf("Warning: could not write PID file: %v\n", err)
 	}
 
+	if !tuiMode {
+		handleShutdownSignal()
+	}
+
 	fmt.Println("Starting full GoUp server (Web + DNS)...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeAll)
 
 	if !tuiMode {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
-		fmt.Println("\nShutting down...")
-		pidfile.Remove()
+		select {}
 	}
 }
 
@@ -220,15 +220,15 @@ func startWeb(cmd *cobra.Command, args []string) {
 		fmt.Printf("Warning: could not write PID file: %v\n", err)
 	}
 
+	if !tuiMode {
+		handleShutdownSignal()
+	}
+
 	fmt.Println("Starting GoUp Web Server...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeWeb)
 
 	if !tuiMode {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
-		fmt.Println("\nShutting down...")
-		pidfile.Remove()
+		select {}
 	}
 }
 
@@ -245,16 +245,30 @@ func startDNS(cmd *cobra.Command, args []string) {
 		fmt.Printf("Warning: could not write PID file: %v\n", err)
 	}
 
+	if !tuiMode {
+		handleShutdownSignal()
+	}
+
 	fmt.Println("Starting GoUp DNS Server...")
 	server.StartServers(configs, tuiMode, benchMode, server.ModeDNS)
 
 	if !tuiMode {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {}
+	}
+}
+
+func handleShutdownSignal() {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
 		<-sigCh
 		fmt.Println("\nShutting down...")
+		if err := server.ShutdownServers(server.DefaultShutdownTimeout); err != nil {
+			fmt.Printf("Error shutting down: %v\n", err)
+		}
 		pidfile.Remove()
-	}
+		os.Exit(0)
+	}()
 }
 
 func loadConfigs() ([]config.SiteConfig, error) {

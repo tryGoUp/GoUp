@@ -18,10 +18,14 @@ import (
 
 func launchWebComponents(configs []config.SiteConfig, enableTUI bool, enableBench bool, wg *sync.WaitGroup) {
 	// Start API Server if enabled
-	api.StartAPIServer()
+	if srv := api.StartAPIServer(); srv != nil {
+		registerServer(srv)
+	}
 
 	// Start Dashboard Server if enabled
-	dashboard.StartDashboardServer()
+	if srv := dashboard.StartDashboardServer(); srv != nil {
+		registerServer(srv)
+	}
 
 	// Groupping configurations by port
 	portConfigs := make(map[int][]config.SiteConfig)
