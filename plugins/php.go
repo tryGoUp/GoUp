@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
@@ -158,18 +159,12 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		phpFPMAddr = "127.0.0.1:9000"
 	}
 
-	var connFactory gofast.ConnFactory
-	if strings.HasPrefix(phpFPMAddr, "/") {
-		if runtime.GOOS == "windows" {
-			http.Error(w, "Unix sockets are not supported on Windows", http.StatusInternalServerError)
-			return true
-		}
-		connFactory = gofast.SimpleConnFactory("unix", phpFPMAddr)
-	} else {
-		connFactory = gofast.SimpleConnFactory("tcp", phpFPMAddr)
+	if strings.HasPrefix(phpFPMAddr, "/") && runtime.GOOS == "windows" {
+		http.Error(w, "Unix sockets are not supported on Windows", http.StatusInternalServerError)
+		return true
 	}
 
-	clientFactory := gofast.SimpleClientFactory(connFactory)
+	clientFactory := fpmClientFactory(phpFPMAddr)
 
 	fcgiHandler := gofast.NewHandler(
 		func(client gofast.Client, req *gofast.Request) (*gofast.ResponsePipe, error) {
@@ -220,6 +215,28 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 
 func (p *PHPPlugin) AfterRequest(w http.ResponseWriter, r *http.Request) {}
 func (p *PHPPlugin) OnExit() error                                       { return nil }
+
+// fpmFactories caches one FastCGI client factory per FPM address. One
+// connection is dialed per request (as nginx does with FPM by default):
+// pooling idle FastCGI connections pins php-fpm workers, which deadlocks
+// pools with few children. gofast's eager ClientPool was evaluated and
+// rejected for exactly that reason.
+var fpmFactories sync.Map // addr -> gofast.ClientFactory
+
+func fpmClientFactory(addr string) gofast.ClientFactory {
+	if cached, ok := fpmFactories.Load(addr); ok {
+		return cached.(gofast.ClientFactory)
+	}
+
+	network := "tcp"
+	if strings.HasPrefix(addr, "/") {
+		network = "unix"
+	}
+	factory := gofast.SimpleClientFactory(gofast.SimpleConnFactory(network, addr))
+
+	actual, _ := fpmFactories.LoadOrStore(addr, factory)
+	return actual.(gofast.ClientFactory)
+}
 
 func phpScriptPath(root, cleanPath string) (string, error) {
 	relPath := strings.TrimPrefix(cleanPath, "/")
