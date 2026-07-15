@@ -10,12 +10,16 @@ import (
 
 // StartAPIServer starts the GoUp API server.
 func StartAPIServer() *http.Server {
-	if config.GlobalConf == nil || !config.GlobalConf.EnableAPI {
+	config.GlobalConfMu.RLock()
+	conf := config.GlobalConf
+	config.GlobalConfMu.RUnlock()
+
+	if conf == nil || !conf.EnableAPI {
 		return nil
 	}
 
 	router := SetupRoutes()
-	port := config.GlobalConf.APIPort
+	port := conf.APIPort
 	var handler http.Handler = router
 	handler = middleware.TokenAuthMiddleware(handler)
 
