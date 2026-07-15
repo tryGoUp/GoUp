@@ -8,12 +8,20 @@ import (
 	"github.com/mirkobrombin/goup/internal/tui"
 )
 
-// LogEntry represents a single log event.
+// LogEntry represents a single access-log event. Fields are typed so the
+// request hot path does not box values into a map; the worker builds the
+// map once, off the request path.
 type LogEntry struct {
 	Logger     *logger.Logger
-	Fields     logger.Fields
 	Message    string
 	Identifier string
+
+	Method     string
+	URL        string
+	RemoteAddr string
+	Domain     string
+	StatusCode int
+	Duration   float64
 }
 
 // AsyncLogger handles logging asynchronously.
@@ -30,9 +38,7 @@ func InitAsyncLogger(bufferSize int) {
 		logChan: make(chan *LogEntry, bufferSize),
 		logEntryPool: sync.Pool{
 			New: func() any {
-				return &LogEntry{
-					Fields: make(logger.Fields),
-				}
+				return &LogEntry{}
 			},
 		},
 	}
@@ -62,23 +68,30 @@ func (al *AsyncLogger) Log(entry *LogEntry) {
 
 // PutEntry resets and returns a LogEntry to the pool.
 func (al *AsyncLogger) PutEntry(entry *LogEntry) {
-	entry.Logger = nil
-	entry.Message = ""
-	entry.Identifier = ""
-	for k := range entry.Fields {
-		delete(entry.Fields, k)
-	}
+	*entry = LogEntry{}
 	al.logEntryPool.Put(entry)
 }
 
-// worker processes log entries from the channel.
+// worker processes log entries from the channel. It is the only goroutine
+// touching the scratch map, which is rebuilt per entry without reallocating.
 func (al *AsyncLogger) worker() {
+	fields := make(logger.Fields, 8)
 	for entry := range al.logChan {
-		entry.Logger.WithFields(entry.Fields).Info(entry.Message)
-		monitor.AddRequestLog(entry.Identifier, entry.Fields)
+		for k := range fields {
+			delete(fields, k)
+		}
+		fields["method"] = entry.Method
+		fields["url"] = entry.URL
+		fields["remote_addr"] = entry.RemoteAddr
+		fields["status_code"] = entry.StatusCode
+		fields["duration_sec"] = entry.Duration
+		fields["domain"] = entry.Domain
+
+		entry.Logger.WithFields(fields).Info(entry.Message)
+		monitor.AddRequestLog(entry.Identifier, fields)
 
 		if tui.IsEnabled() {
-			tui.UpdateLog(entry.Identifier, entry.Fields)
+			tui.UpdateLog(entry.Identifier, fields)
 		}
 
 		al.PutEntry(entry)

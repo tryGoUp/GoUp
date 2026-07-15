@@ -43,6 +43,30 @@ func BenchmarkGzip_ClientWithoutGzip(b *testing.B) {
 	benchGzip(b, "text/html", benchPayloadHTML, "")
 }
 
+func BenchmarkLoggingMiddleware_Async(b *testing.B) {
+	if GetAsyncLogger() == nil {
+		InitAsyncLogger(4096)
+	}
+	l, err := logger.NewLogger("bench-async", nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	l.SetOutput(&bytes.Buffer{})
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	h := LoggingMiddleware(l, "bench.local", "bench")(inner)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest("GET", "/bench?x=1", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+	}
+}
+
 func BenchmarkLoggingMiddleware(b *testing.B) {
 	l, err := logger.NewLogger("bench", nil)
 	if err != nil {

@@ -50,19 +50,19 @@ func LoggingMiddleware(l *logger.Logger, domain string, identifier string) Middl
 				entry.Logger = l
 				entry.Message = "Handled request"
 				entry.Identifier = identifier
-				entry.Fields["method"] = r.Method
-				entry.Fields["url"] = r.URL.String()
-				entry.Fields["remote_addr"] = remoteAddr
-				entry.Fields["status_code"] = rw.statusCode
-				entry.Fields["duration_sec"] = duration.Seconds()
-				entry.Fields["domain"] = domain
+				entry.Method = r.Method
+				entry.URL = r.RequestURI
+				entry.RemoteAddr = remoteAddr
+				entry.StatusCode = rw.statusCode
+				entry.Duration = duration.Seconds()
+				entry.Domain = domain
 
 				asyncLog.Log(entry)
 			} else {
 				// Fallback to sync logging (creates allocations)
 				fields := logger.Fields{
 					"method":       r.Method,
-					"url":          r.URL.String(),
+					"url":          r.RequestURI,
 					"remote_addr":  remoteAddr,
 					"status_code":  rw.statusCode,
 					"duration_sec": duration.Seconds(),
