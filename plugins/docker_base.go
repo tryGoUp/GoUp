@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -92,7 +93,7 @@ func (d *DockerBasePlugin) OnInitForSite(conf config.SiteConfig, domainLogger *l
 	}
 
 	// Set default SocketPath.
-	if strings.ToLower(d.Config.CLICommand) == "podman" && d.Config.SocketPath == "" {
+	if runtime.GOOS != "windows" && strings.ToLower(d.Config.CLICommand) == "podman" && d.Config.SocketPath == "" {
 		userSocket := fmt.Sprintf("/run/user/%d/podman/podman.sock", os.Getuid())
 		if _, err := os.Stat(userSocket); err == nil {
 			d.Config.SocketPath = userSocket
@@ -100,7 +101,7 @@ func (d *DockerBasePlugin) OnInitForSite(conf config.SiteConfig, domainLogger *l
 			d.Config.SocketPath = "/run/podman/podman.sock"
 		}
 	}
-	if d.Config.SocketPath == "" {
+	if runtime.GOOS != "windows" && d.Config.SocketPath == "" {
 		d.Config.SocketPath = "/var/run/docker.sock"
 	}
 
@@ -146,6 +147,9 @@ func (d *DockerBasePlugin) ListContainers() (string, error) {
 
 func (d *DockerBasePlugin) callDockerAPI(method, path string, body []byte) (string, error) {
 	d.DomainLogger.Infof("[DockerBasePlugin] Calling Docker API: %s %s", method, path)
+	if runtime.GOOS == "windows" {
+		return "", fmt.Errorf("docker API over Unix socket is not supported on Windows")
+	}
 	socket := d.Config.SocketPath
 	if socket == "" {
 		socket = "/var/run/docker.sock"

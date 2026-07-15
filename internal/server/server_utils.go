@@ -1,19 +1,15 @@
 package server
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/sys/unix"
 )
 
 // createHTTPServer creates an HTTP server with the given configuration and handler.
@@ -46,19 +42,6 @@ func createHTTPServer(conf config.SiteConfig, handler http.Handler) *http.Server
 	}
 
 	return s
-}
-
-// listenOptimized creates a TCP listener with SO_REUSEPORT and TCP_FASTOPEN optimizations.
-func listenOptimized(addr string) (net.Listener, error) {
-	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			return c.Control(func(fd uintptr) {
-				unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
-				unix.SetsockoptInt(int(fd), unix.SOL_TCP, unix.TCP_FASTOPEN, 256)
-			})
-		},
-	}
-	return lc.Listen(context.Background(), "tcp", addr)
 }
 
 // startServerInstance starts the HTTP server instance.

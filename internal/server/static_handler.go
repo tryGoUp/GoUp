@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,8 +17,17 @@ import (
 
 // ServeStatic serves static files with support for pre-compressed sidecar files (.br, .gz).
 func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
-	cleanPath := filepath.Clean(r.URL.Path)
-	fullPath := filepath.Join(root, cleanPath)
+	cleanPath, fullPath, err := staticLocalPath(root, r.URL.Path)
+	if err != nil {
+		if isBrowser(r) {
+			assets.RenderErrorPage(w, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
+		} else {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintln(w, "404 Not Found")
+		}
+		return
+	}
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
@@ -61,7 +71,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 			info = indexInfo
 		} else {
 			// Directory listing or Welcome Page
-			if cleanPath == "/" || cleanPath == "." || cleanPath == "\\" {
+			if cleanPath == "/" {
 				// If index.html is missing at root, we can still show listing if it's not empty
 			}
 
@@ -89,7 +99,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 					})
 				}
 
-				showBack := cleanPath != "/" && cleanPath != "." && cleanPath != "\\"
+				showBack := cleanPath != "/"
 				assets.RenderDirectoryListing(w, cleanPath, items, showBack)
 			} else {
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -190,4 +200,19 @@ func formatSizeBytes(b int64) string {
 func isBrowser(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
 	return strings.Contains(accept, "text/html")
+}
+
+func staticLocalPath(root, urlPath string) (string, string, error) {
+	urlPath = strings.ReplaceAll(urlPath, "\\", "/")
+	cleanPath := path.Clean("/" + strings.TrimPrefix(urlPath, "/"))
+	relPath := strings.TrimPrefix(cleanPath, "/")
+	if relPath == "" {
+		return cleanPath, root, nil
+	}
+
+	localPath, err := filepath.Localize(relPath)
+	if err != nil {
+		return cleanPath, "", err
+	}
+	return cleanPath, filepath.Join(root, localPath), nil
 }

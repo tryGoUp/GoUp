@@ -10,6 +10,25 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vanilla-os/pico:main
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+          - goos: linux
+            goarch: arm64
+            ext: ""
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+          - goos: darwin
+            goarch: arm64
+            ext: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -17,16 +36,20 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22
+          go-version-file: go.mod
 
       - name: Test
         run: go test -v ./...
 
       - name: Build
-        run: go build -o goup cmd/goup/main.go
+        env:
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o dist/goup-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} cmd/goup/main.go
 
       - uses: softprops/action-gh-release@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           files: |
-            goup
+            dist/goup-*
