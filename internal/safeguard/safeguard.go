@@ -17,10 +17,14 @@ var log *logger.Logger
 
 // Start starts the SafeGuard routine if enabled.
 func Start() {
-	if config.GlobalConf == nil {
+	config.GlobalConfMu.RLock()
+	globalConf := config.GlobalConf
+	config.GlobalConfMu.RUnlock()
+
+	if globalConf == nil {
 		return
 	}
-	conf := config.GlobalConf.SafeGuard
+	conf := globalConf.SafeGuard
 
 	// Default: Enabled if not explicitly set to false
 	if conf.Enable != nil && !*conf.Enable {

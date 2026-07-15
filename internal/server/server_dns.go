@@ -11,11 +11,15 @@ import (
 )
 
 func launchDNS(wg *sync.WaitGroup) {
-	if config.GlobalConf != nil && config.GlobalConf.DNS != nil && config.GlobalConf.DNS.Enable {
+	config.GlobalConfMu.RLock()
+	conf := config.GlobalConf
+	config.GlobalConfMu.RUnlock()
+
+	if conf != nil && conf.DNS != nil && conf.DNS.Enable {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			dns.Start(config.GlobalConf.DNS)
+			dns.Start(conf.DNS)
 		}()
 	}
 }

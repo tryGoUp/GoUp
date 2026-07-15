@@ -2,15 +2,15 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="bg-white rounded-xl shadow p-4 flex items-center space-x-4">
-            <span class="text-4xl font-bold">{{sitesCount}}</span>
+            <span id="live-sites-count" class="text-4xl font-bold">{{sitesCount}}</span>
             <span class="mt-2">Total Sites</span>
         </div>
         <div class="bg-white rounded-xl shadow p-4 flex items-center space-x-4">
-            <span class="text-4xl font-bold">{{vhostsCount}}</span>
+            <span id="live-vhosts-count" class="text-4xl font-bold">{{vhostsCount}}</span>
             <span class="mt-2">Virtual Hosts</span>
         </div>
         <div class="bg-white rounded-xl shadow p-4 flex items-center space-x-4">
-            <span class="text-4xl font-bold">{{totalLogWeight}}</span>
+            <span id="live-log-weight" class="text-4xl font-bold">{{totalLogWeight}}</span>
             <span class="mt-2">Log Weight (bytes)</span>
         </div>
     </div>
@@ -27,7 +27,7 @@
         <div class="bg-white rounded-xl shadow p-6 space-y-6">
             <div>
                 <h3 class="text-lg font-semibold mb-2">Real-Time Metrics</h3>
-                <ul class="space-y-2 text-sm text-gray-600">
+                <ul id="live-home-metrics" class="space-y-2 text-sm text-gray-600">
                     <li>Total Requests: <span>{{metrics.requests_total}}</span></li>
                     <li>Average Latency (ms): <span>{{metrics.latency_avg_ms}}</span></li>
                     <li>CPU Usage (%): <span>{{metrics.cpu_usage}}</span></li>

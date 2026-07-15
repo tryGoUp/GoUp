@@ -15,6 +15,8 @@ var customLogDir string
 
 // SiteConfigs is a global map of site configurations keyed by domain.
 var SiteConfigs = make(map[string]SiteConfig)
+var SiteConfigsMu sync.RWMutex
+var GlobalConfMu sync.RWMutex
 
 // SSLConfig represents the SSL configuration for a site.
 type SSLConfig struct {
@@ -148,7 +150,9 @@ func LoadAllConfigs() ([]SiteConfig, error) {
 
 				mu.Lock()
 				configs = append(configs, conf)
+				SiteConfigsMu.Lock()
 				SiteConfigs[conf.Domain] = conf
+				SiteConfigsMu.Unlock()
 				mu.Unlock()
 			}(file.Name())
 		}
@@ -173,6 +177,8 @@ func GetSiteConfigByHost(host string) (SiteConfig, error) {
 		host = host[:colonIndex]
 	}
 
+	SiteConfigsMu.RLock()
+	defer SiteConfigsMu.RUnlock()
 	if conf, ok := SiteConfigs[host]; ok {
 		return conf, nil
 	}

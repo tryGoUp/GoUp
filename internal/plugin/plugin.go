@@ -120,6 +120,8 @@ func (pm *PluginManager) GetRegisteredPlugins() []string {
 }
 
 func isPluginEnabled(name string) bool {
+	config.GlobalConfMu.RLock()
+	defer config.GlobalConfMu.RUnlock()
 	if config.GlobalConf == nil || len(config.GlobalConf.EnabledPlugins) == 0 {
 		return true
 	}

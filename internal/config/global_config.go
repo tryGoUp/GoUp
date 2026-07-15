@@ -46,6 +46,7 @@ func LoadGlobalConfig(customPath string) error {
 	}
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		GlobalConfMu.Lock()
 		GlobalConf = &GlobalConfig{
 			EnableAPI:      false,
 			APIPort:        6007,
@@ -53,6 +54,7 @@ func LoadGlobalConfig(customPath string) error {
 			EnabledPlugins: []string{},
 			DNS:            DefaultDNSConfig(),
 		}
+		GlobalConfMu.Unlock()
 		return nil
 	}
 
@@ -64,7 +66,9 @@ func LoadGlobalConfig(customPath string) error {
 	if err := json.Unmarshal(data, &conf); err != nil {
 		return err
 	}
+	GlobalConfMu.Lock()
 	GlobalConf = &conf
+	GlobalConfMu.Unlock()
 	return nil
 }
 
@@ -72,7 +76,9 @@ func LoadGlobalConfig(customPath string) error {
 func SaveGlobalConfig() error {
 	configDir := GetConfigDir()
 	configFile := filepath.Join(configDir, globalConfName)
+	GlobalConfMu.RLock()
 	data, err := json.MarshalIndent(GlobalConf, "", "    ")
+	GlobalConfMu.RUnlock()
 	if err != nil {
 		return err
 	}

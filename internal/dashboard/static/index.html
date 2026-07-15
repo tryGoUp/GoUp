@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/navigo"></script>
     <script src="https://cdn.jsdelivr.net/npm/handlebars@latest/dist/handlebars.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.2/bundles/datastar.js"></script>
     <script type="module" src="/entry.js"></script>
 </head>
 
@@ -41,6 +42,7 @@
     </header>
 
     <main id="app" class="max-w-screen-xl mx-auto px-4 py-6"></main>
+    <div data-init="@get('/datastar/dashboard')"></div>
 </body>
 
 </html>

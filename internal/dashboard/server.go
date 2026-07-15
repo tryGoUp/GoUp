@@ -10,10 +10,14 @@ import (
 
 // StartDashboardServer starts a dedicated server for the dashboard.
 func StartDashboardServer() *http.Server {
-	if config.GlobalConf == nil || config.GlobalConf.DashboardPort == 0 {
+	config.GlobalConfMu.RLock()
+	conf := config.GlobalConf
+	config.GlobalConfMu.RUnlock()
+
+	if conf == nil || conf.DashboardPort == 0 {
 		return nil
 	}
-	port := config.GlobalConf.DashboardPort
+	port := conf.DashboardPort
 	handler := Handler()
 	handler = middleware.BasicAuthMiddleware(handler)
 

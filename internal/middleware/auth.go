@@ -12,20 +12,24 @@ import (
 // BasicAuthMiddleware enforces Basic Authentication if credentials are configured.
 func BasicAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		config.GlobalConfMu.RLock()
+		conf := config.GlobalConf
+		config.GlobalConfMu.RUnlock()
+
 		// If auth is not configured, skip
-		if config.GlobalConf == nil || config.GlobalConf.Account.Username == "" || config.GlobalConf.Account.PasswordHash == "" {
+		if conf == nil || conf.Account.Username == "" || conf.Account.PasswordHash == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		user, pass, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(config.GlobalConf.Account.Username)) != 1 {
+		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(conf.Account.Username)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="GoUp Dashboard"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(config.GlobalConf.Account.PasswordHash), []byte(pass))
+		err := bcrypt.CompareHashAndPassword([]byte(conf.Account.PasswordHash), []byte(pass))
 		if err != nil {
 			w.Header().Set("WWW-Authenticate", `Basic realm="GoUp Dashboard"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -39,8 +43,12 @@ func BasicAuthMiddleware(next http.Handler) http.Handler {
 // TokenAuthMiddleware enforces Token Authentication if a token is configured.
 func TokenAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		config.GlobalConfMu.RLock()
+		conf := config.GlobalConf
+		config.GlobalConfMu.RUnlock()
+
 		// If token is not configured, skip
-		if config.GlobalConf == nil || config.GlobalConf.Account.APIToken == "" {
+		if conf == nil || conf.Account.APIToken == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -53,7 +61,7 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(config.GlobalConf.Account.APIToken)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(conf.Account.APIToken)) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

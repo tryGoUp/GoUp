@@ -31,7 +31,9 @@ func togglePluginHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	pName := vars["pluginName"]
 
+	config.GlobalConfMu.Lock()
 	if config.GlobalConf == nil {
+		config.GlobalConfMu.Unlock()
 		http.Error(w, "Global config not loaded", http.StatusInternalServerError)
 		return
 	}
@@ -50,6 +52,8 @@ func togglePluginHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		config.GlobalConf.EnabledPlugins = append(config.GlobalConf.EnabledPlugins, pName)
 	}
+	config.GlobalConfMu.Unlock()
+
 	if err := config.SaveGlobalConfig(); err != nil {
 		http.Error(w, "Failed to save config", http.StatusInternalServerError)
 		return
@@ -64,6 +68,8 @@ func togglePluginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPluginEnabled(name string) bool {
+	config.GlobalConfMu.RLock()
+	defer config.GlobalConfMu.RUnlock()
 	if config.GlobalConf == nil || len(config.GlobalConf.EnabledPlugins) == 0 {
 		return true
 	}

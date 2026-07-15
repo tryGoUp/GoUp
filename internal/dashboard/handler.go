@@ -17,7 +17,11 @@ var content embed.FS
 
 // apiProxy returns a reverse proxy handler to forward /api calls to the backend.
 func apiProxy() http.Handler {
-	target, err := url.Parse(fmt.Sprintf("http://localhost:%d", config.GlobalConf.APIPort))
+	config.GlobalConfMu.RLock()
+	apiPort := config.GlobalConf.APIPort
+	config.GlobalConfMu.RUnlock()
+
+	target, err := url.Parse(fmt.Sprintf("http://localhost:%d", apiPort))
 	if err != nil {
 		panic(err)
 	}
@@ -25,8 +29,11 @@ func apiProxy() http.Handler {
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		if config.GlobalConf != nil && config.GlobalConf.Account.APIToken != "" {
-			req.Header.Set("X-API-Token", config.GlobalConf.Account.APIToken)
+		config.GlobalConfMu.RLock()
+		conf := config.GlobalConf
+		config.GlobalConfMu.RUnlock()
+		if conf != nil && conf.Account.APIToken != "" {
+			req.Header.Set("X-API-Token", conf.Account.APIToken)
 		}
 	}
 	return proxy
@@ -54,6 +61,7 @@ func Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("/api/", apiProxy())
+	mux.HandleFunc("/datastar/dashboard", streamDashboardHandler)
 
 	subFS, err := fs.Sub(content, "static")
 	if err != nil {

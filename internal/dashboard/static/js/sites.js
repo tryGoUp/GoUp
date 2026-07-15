@@ -14,9 +14,11 @@ export default {
     const html = template({ sites: sitesData });
     document.querySelector(containerId).innerHTML = html;
 
-    document.querySelectorAll(".view-json").forEach((button) => {
-      button.addEventListener("click", async (e) => {
-        const domain = e.currentTarget.dataset.domain;
+    const sitesList = document.getElementById("sitesList");
+    sitesList.addEventListener("click", async (e) => {
+      const viewButton = e.target.closest(".view-json");
+      if (viewButton) {
+        const domain = viewButton.dataset.domain;
         if (!domain) return;
 
         const siteResp = await fetch(`/api/sites/${domain}`);
@@ -64,12 +66,12 @@ export default {
             },
           ],
         });
-      });
-    });
+        return;
+      }
 
-    document.querySelectorAll(".delete-site").forEach((button) => {
-      button.addEventListener("click", async (e) => {
-        const domain = e.target.dataset.domain;
+      const deleteButton = e.target.closest(".delete-site");
+      if (deleteButton) {
+        const domain = deleteButton.dataset.domain;
         if (confirm(`Are you sure you want to delete ${domain}?`)) {
           await fetch(`/api/sites/${domain}`, { method: "DELETE" });
           Toast.show("Site deleted. Restarting server...", "error", 3000);
@@ -78,7 +80,7 @@ export default {
             6000
           );
         }
-      });
+      }
     });
 
     window.currentView.applySearch = (searchTerm) => {

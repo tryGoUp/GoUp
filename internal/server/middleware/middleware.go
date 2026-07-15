@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/logger"
+	"github.com/mirkobrombin/goup/internal/monitor"
 	"github.com/mirkobrombin/goup/internal/tui"
 )
 
@@ -68,6 +69,7 @@ func LoggingMiddleware(l *logger.Logger, domain string, identifier string) Middl
 					"domain":       domain,
 				}
 				l.WithFields(fields).Info("Handled request")
+				monitor.AddRequestLog(identifier, fields)
 				if tui.IsEnabled() {
 					tui.UpdateLog(identifier, fields)
 				}

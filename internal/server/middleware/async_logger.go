@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/mirkobrombin/goup/internal/logger"
+	"github.com/mirkobrombin/goup/internal/monitor"
 	"github.com/mirkobrombin/goup/internal/tui"
 )
 
@@ -74,6 +75,7 @@ func (al *AsyncLogger) PutEntry(entry *LogEntry) {
 func (al *AsyncLogger) worker() {
 	for entry := range al.logChan {
 		entry.Logger.WithFields(entry.Fields).Info(entry.Message)
+		monitor.AddRequestLog(entry.Identifier, entry.Fields)
 
 		if tui.IsEnabled() {
 			tui.UpdateLog(entry.Identifier, entry.Fields)
