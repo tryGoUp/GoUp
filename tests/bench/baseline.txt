@@ -1,0 +1,191 @@
+commit: 34405712b984f323880278a1a20edf2922711cfe
+date: 2026-07-15T14:49:03+02:00
+kernel: 6.17.9+deb14-amd64
+go: go version go1.26.0 linux/amd64
+cpu:  13th Gen Intel(R) Core(TM) i7-13700H
+gomaxprocs: 20
+
+goos: linux
+goarch: amd64
+pkg: github.com/mirkobrombin/goup/internal/server
+cpu: 13th Gen Intel(R) Core(TM) i7-13700H
+BenchmarkServeStatic_Tiny-20             	   60823	     16839 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	  126616	     15854 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   90356	     17079 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   72093	     16277 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   60066	     17615 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   67129	     17351 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   73484	     18184 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   68180	     16187 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   68811	     15951 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_Tiny-20             	   65824	     19195 ns/op	    7105 B/op	      36 allocs/op
+BenchmarkServeStatic_4KB-20              	   52456	     26340 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   43281	     28567 ns/op	   15063 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   39406	     25836 ns/op	   15063 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   40438	     26270 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   41738	     28465 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   52962	     22652 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   60742	     21576 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   47842	     24569 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   47074	     23316 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_4KB-20              	   48642	     20754 ns/op	   15064 B/op	      37 allocs/op
+BenchmarkServeStatic_64KB-20             	   17072	     82373 ns/op	  138164 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   20589	     61392 ns/op	  138167 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   21865	     58370 ns/op	  138171 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   19647	     64135 ns/op	  138172 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   18621	     86278 ns/op	  138164 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   14485	     81320 ns/op	  138162 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   15775	     85184 ns/op	  138157 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   16830	     76501 ns/op	  138161 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   15038	     79326 ns/op	  138175 B/op	      38 allocs/op
+BenchmarkServeStatic_64KB-20             	   16920	     72720 ns/op	  138178 B/op	      38 allocs/op
+BenchmarkServeStatic_1MB-20              	    1159	   1126988 ns/op	 2107257 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	    1414	   1054158 ns/op	 2107223 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	    1068	   1148762 ns/op	 2107295 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	     912	   1148754 ns/op	 2107270 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	    1122	   1153653 ns/op	 2107373 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	    1083	   1111215 ns/op	 2107279 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	     895	   1437001 ns/op	 2107533 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	     766	   1399514 ns/op	 2107581 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	     668	   1596076 ns/op	 2107520 B/op	      46 allocs/op
+BenchmarkServeStatic_1MB-20              	     897	   1365540 ns/op	 2107341 B/op	      46 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   74011	     16035 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   78819	     14182 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   80241	     15535 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   84219	     13177 ns/op	    7979 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   83611	     15433 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   86282	     14840 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   78447	     15301 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   92584	     14171 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   87903	     14407 ns/op	    7980 B/op	      40 allocs/op
+BenchmarkServeStatic_Precompressed-20    	   77985	     13974 ns/op	    7964 B/op	      40 allocs/op
+BenchmarkServeStatic_Listing-20          	   61909	     21402 ns/op	   10480 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   46232	     23369 ns/op	   10477 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   58872	     24479 ns/op	   10477 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   50676	     23713 ns/op	   10478 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   67368	     22709 ns/op	   10481 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   54876	     23967 ns/op	   10482 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   51223	     24323 ns/op	   10474 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   42541	     25201 ns/op	   10478 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   45175	     26710 ns/op	   10481 B/op	      98 allocs/op
+BenchmarkServeStatic_Listing-20          	   41866	     24374 ns/op	   10477 B/op	      98 allocs/op
+BenchmarkAddCustomHeaders-20             	  843828	      1609 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	 1107001	      1269 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	 1000000	      1149 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	 1028097	      1158 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	 1000000	      1199 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	  907150	      1516 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	  854698	      1379 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	  972298	      1366 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	  753178	      1391 ns/op	     736 B/op	      11 allocs/op
+BenchmarkAddCustomHeaders-20             	  772566	      1369 ns/op	     736 B/op	      11 allocs/op
+PASS
+ok  	github.com/mirkobrombin/goup/internal/server	113.362s
+goos: linux
+goarch: amd64
+pkg: github.com/mirkobrombin/goup/internal/server/middleware
+cpu: 13th Gen Intel(R) Core(TM) i7-13700H
+BenchmarkGzip_CompressibleHTML-20         	   24628	     53410 ns/op	    7455 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   21492	     50377 ns/op	    7366 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   21714	     53812 ns/op	    7510 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   26446	     58925 ns/op	    7592 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   23805	     46775 ns/op	    7479 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   23587	     50947 ns/op	    7728 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   24765	     43479 ns/op	    7319 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   23388	     45353 ns/op	    7422 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   27640	     42122 ns/op	    7705 B/op	      25 allocs/op
+BenchmarkGzip_CompressibleHTML-20         	   26073	     41924 ns/op	    7699 B/op	      25 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  138156	      9255 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  121779	      9426 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  128931	      9012 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  254131	      9336 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  136052	      8825 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  126940	      8668 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  168970	      7565 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  122042	      9071 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  158724	      8960 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_NonCompressibleBinary-20    	  120992	      9660 ns/op	   12643 B/op	      22 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  168570	      7678 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  277564	      7526 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  126409	      8239 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  144920	      7893 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  144942	      8209 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  217776	      8010 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  137434	      8588 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  225430	      8262 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  142009	      7064 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkGzip_ClientWithoutGzip-20        	  148939	      7709 ns/op	   12203 B/op	      18 allocs/op
+BenchmarkLoggingMiddleware-20             	  269005	      3816 ns/op	    6448 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  280077	      4085 ns/op	    6441 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  285015	      4064 ns/op	    6438 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  353169	      3576 ns/op	    6545 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  298980	      3591 ns/op	    6429 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  306913	      3946 ns/op	    6425 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  336908	      3481 ns/op	    6559 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  430102	      3472 ns/op	    6494 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  285260	      3870 ns/op	    6438 B/op	      21 allocs/op
+BenchmarkLoggingMiddleware-20             	  382418	      3427 ns/op	    6523 B/op	      21 allocs/op
+PASS
+ok  	github.com/mirkobrombin/goup/internal/server/middleware	67.429s
+goos: linux
+goarch: amd64
+pkg: github.com/mirkobrombin/goup/internal/plugin
+cpu: 13th Gen Intel(R) Core(TM) i7-13700H
+BenchmarkPluginMiddleware-20             	  314836	      4327 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  279757	      4134 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  641120	      2732 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  418281	      2685 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  518934	      2718 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  580051	      2922 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  307852	      3505 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  413332	      2852 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  365714	      2754 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware-20             	  380084	      2755 ns/op	    5412 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  646057	      2166 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  668962	      2285 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  575475	      2578 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  525397	      2365 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  610486	      2593 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  448974	      3073 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  428826	      2502 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  554352	      2573 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  475179	      2510 ns/op	    5415 B/op	      14 allocs/op
+BenchmarkPluginMiddleware_Parallel-20    	  417915	      2482 ns/op	    5415 B/op	      14 allocs/op
+PASS
+ok  	github.com/mirkobrombin/goup/internal/plugin	30.990s
+goos: linux
+goarch: amd64
+pkg: github.com/mirkobrombin/goup/plugins
+cpu: 13th Gen Intel(R) Core(TM) i7-13700H
+BenchmarkNodeProxy_Resp4KB-20    	    9411	    129022 ns/op	  31.75 MB/s	   28818 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    7886	    149745 ns/op	  27.35 MB/s	   29033 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	   10303	    141473 ns/op	  28.95 MB/s	   29100 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	   10000	    150999 ns/op	  27.13 MB/s	   29166 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    8718	    171181 ns/op	  23.93 MB/s	   29067 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    6504	    163436 ns/op	  25.06 MB/s	   28957 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    8282	    151963 ns/op	  26.95 MB/s	   29073 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	   10000	    181390 ns/op	  22.58 MB/s	   29256 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    6607	    186561 ns/op	  21.96 MB/s	   29164 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp4KB-20    	    7594	    170202 ns/op	  24.07 MB/s	   28947 B/op	     110 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     662	   2137652 ns/op	 490.53 MB/s	 3322118 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     736	   2670076 ns/op	 392.71 MB/s	 3327371 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     476	   2865217 ns/op	 365.97 MB/s	 3326056 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     388	   2761244 ns/op	 379.75 MB/s	 3325051 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     418	   2829242 ns/op	 370.62 MB/s	 3325180 B/op	     141 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     444	   2329602 ns/op	 450.11 MB/s	 3325664 B/op	     141 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     382	   2831597 ns/op	 370.31 MB/s	 3326597 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     380	   2738052 ns/op	 382.96 MB/s	 3326420 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     351	   2878438 ns/op	 364.29 MB/s	 3326276 B/op	     142 allocs/op
+BenchmarkNodeProxy_Resp1MB-20    	     408	   2888212 ns/op	 363.05 MB/s	 3326341 B/op	     142 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     315	   3535697 ns/op	 296.86 MB/s	 3392776 B/op	     274 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     379	   2902548 ns/op	 361.61 MB/s	 3389485 B/op	     272 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     392	   3484342 ns/op	 301.23 MB/s	 3391532 B/op	     273 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     337	   3227899 ns/op	 325.17 MB/s	 3391770 B/op	     273 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     327	   3162381 ns/op	 331.90 MB/s	 3391165 B/op	     273 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     484	   2287149 ns/op	 458.91 MB/s	 3388374 B/op	     272 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     568	   3043084 ns/op	 344.91 MB/s	 3390813 B/op	     273 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     626	   2848821 ns/op	 368.43 MB/s	 3389346 B/op	     272 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     421	   2387287 ns/op	 439.66 MB/s	 3388710 B/op	     272 allocs/op
+BenchmarkNodeProxy_Post1MB-20    	     528	   3539002 ns/op	 296.58 MB/s	 3391063 B/op	     274 allocs/op
+PASS
+ok  	github.com/mirkobrombin/goup/plugins	69.119s
