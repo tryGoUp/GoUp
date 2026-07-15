@@ -16,7 +16,12 @@ import (
 type PHPPluginConfig struct {
 	Enable  bool   `json:"enable"`
 	FPMAddr string `json:"fpm_addr"`
-	RootDir string `json:"-"`
+	// FrontController is the script that handles requests which do not map to
+	// an existing file, relative to the site root. This is what WordPress and
+	// other front-controller apps need to serve pretty permalinks
+	// (e.g. /iscrizione/ -> /index.php). Defaults to "index.php".
+	FrontController string `json:"front_controller"`
+	RootDir         string `json:"-"`
 }
 
 type PHPPlugin struct {
@@ -53,6 +58,9 @@ func (p *PHPPlugin) OnInitForSite(conf config.SiteConfig, domainLogger *logger.L
 		if fpmAddr, ok := rawMap["fpm_addr"].(string); ok {
 			cfg.FPMAddr = fpmAddr
 		}
+		if fc, ok := rawMap["front_controller"].(string); ok {
+			cfg.FrontController = fc
+		}
 	}
 	// Resolve the document root once so SCRIPT_FILENAME can be absolute.
 	if abs, err := filepath.Abs(conf.RootDirectory); err == nil {
@@ -78,36 +86,66 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 
-	// Map directory requests to their index.php (e.g. "/" -> "/index.php").
-	urlPath := r.URL.Path
-	if urlPath == "" || strings.HasSuffix(urlPath, "/") {
-		urlPath += "index.php"
+	docRoot := cfg.RootDir
+	if docRoot == "" {
+		docRoot = "."
 	}
 
-	// We only handle .php files; everything else falls through to the static
-	// file server (assets, css, js, images, ...).
-	if !strings.HasSuffix(urlPath, ".php") {
-		return false
+	// Resolve the requested path under the document root. Anchoring the clean
+	// to "/" prevents path traversal from escaping the root.
+	cleanPath := filepath.Clean("/" + r.URL.Path)
+	fsPath := filepath.Join(docRoot, cleanPath)
+
+	var scriptFilename, scriptName, pathInfo string
+
+	info, statErr := os.Stat(fsPath)
+	switch {
+	case statErr == nil && info.IsDir():
+		// Directory request: serve its index.php when present.
+		idxPath := filepath.Join(fsPath, "index.php")
+		if fi, err := os.Stat(idxPath); err == nil && !fi.IsDir() {
+			scriptFilename = idxPath
+			scriptName = strings.TrimSuffix(filepath.ToSlash(cleanPath), "/") + "/index.php"
+		}
+
+	case statErr == nil:
+		// Existing file: execute it if it is PHP, otherwise let the static
+		// file server handle it (assets, css, js, images, ...).
+		if !strings.HasSuffix(fsPath, ".php") {
+			return false
+		}
+		scriptFilename = fsPath
+		scriptName = filepath.ToSlash(cleanPath)
 	}
 
-	p.DomainLogger.Infof("[PHPPlugin] Handling PHP request: %s (domain=%s)", urlPath, host)
+	if scriptFilename == "" {
+		// The path does not exist (or is a directory without index.php):
+		// route the request through the front controller so the app can
+		// handle pretty URLs (e.g. WordPress permalinks).
+		front := cfg.FrontController
+		if front == "" {
+			front = "index.php"
+		}
+		frontClean := filepath.Clean("/" + front)
+		frontPath := filepath.Join(docRoot, frontClean)
+		fi, err := os.Stat(frontPath)
+		if err != nil || fi.IsDir() {
+			// No front controller available: fall through to the static
+			// handler, which will render the 404.
+			return false
+		}
+		scriptFilename = frontPath
+		scriptName = filepath.ToSlash(frontClean)
+		// Preserve the original URI as PATH_INFO so the app sees the route.
+		pathInfo = r.URL.Path
+	}
+
+	p.DomainLogger.Infof("[PHPPlugin] Handling PHP request: %s -> %s (domain=%s)", r.URL.Path, scriptFilename, host)
 
 	// If the user hasn't specified a FPM address, use default.
 	phpFPMAddr := cfg.FPMAddr
 	if phpFPMAddr == "" {
 		phpFPMAddr = "127.0.0.1:9000"
-	}
-
-	// Resolve the script against the configured document root so PHP-FPM gets
-	// an absolute SCRIPT_FILENAME regardless of its own working directory.
-	docRoot := cfg.RootDir
-	if docRoot == "" {
-		docRoot = "."
-	}
-	scriptFilename := filepath.Join(docRoot, filepath.Clean(urlPath))
-	if _, err := os.Stat(scriptFilename); os.IsNotExist(err) {
-		http.NotFound(w, r)
-		return true
 	}
 
 	var connFactory gofast.ConnFactory
@@ -122,8 +160,12 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 	fcgiHandler := gofast.NewHandler(
 		func(client gofast.Client, req *gofast.Request) (*gofast.ResponsePipe, error) {
 			req.Params["SCRIPT_FILENAME"] = scriptFilename
-			req.Params["SCRIPT_NAME"] = urlPath
+			req.Params["SCRIPT_NAME"] = scriptName
 			req.Params["DOCUMENT_ROOT"] = docRoot
+			if pathInfo != "" {
+				req.Params["PATH_INFO"] = pathInfo
+				req.Params["PATH_TRANSLATED"] = filepath.Join(docRoot, filepath.Clean("/"+pathInfo))
+			}
 			req.Params["REQUEST_METHOD"] = r.Method
 			req.Params["SERVER_PROTOCOL"] = r.Proto
 			req.Params["REQUEST_URI"] = r.URL.RequestURI()
