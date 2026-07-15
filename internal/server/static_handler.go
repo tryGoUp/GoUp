@@ -42,6 +42,18 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 	}
 
 	if info.IsDir() {
+		// Redirect directory requests missing the trailing slash so relative
+		// links resolve against the directory itself (matters for symlinked
+		// directories too, since Stat follows symlinks).
+		if !strings.HasSuffix(r.URL.Path, "/") {
+			target := r.URL.Path + "/"
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+
 		indexPath := filepath.Join(fullPath, "index.html")
 		indexInfo, err := os.Stat(indexPath)
 		if err == nil && !indexInfo.IsDir() {
