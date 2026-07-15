@@ -3,7 +3,9 @@ package plugins
 import (
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/mirkobrombin/goup/internal/config"
@@ -91,10 +93,15 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		docRoot = "."
 	}
 
-	// Resolve the requested path under the document root. Anchoring the clean
-	// to "/" prevents path traversal from escaping the root.
-	cleanPath := filepath.Clean("/" + r.URL.Path)
-	fsPath := filepath.Join(docRoot, cleanPath)
+	// Resolve the requested path under the document root. Backslashes are
+	// normalized first so Windows-style separators cannot bypass the clean,
+	// and anchoring the clean to "/" prevents path traversal from escaping
+	// the root.
+	cleanPath := path.Clean("/" + strings.ReplaceAll(r.URL.Path, "\\", "/"))
+	fsPath, err := phpScriptPath(docRoot, cleanPath)
+	if err != nil {
+		return false
+	}
 
 	var scriptFilename, scriptName, pathInfo string
 
@@ -105,17 +112,17 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		idxPath := filepath.Join(fsPath, "index.php")
 		if fi, err := os.Stat(idxPath); err == nil && !fi.IsDir() {
 			scriptFilename = idxPath
-			scriptName = strings.TrimSuffix(filepath.ToSlash(cleanPath), "/") + "/index.php"
+			scriptName = strings.TrimSuffix(cleanPath, "/") + "/index.php"
 		}
 
 	case statErr == nil:
 		// Existing file: execute it if it is PHP, otherwise let the static
 		// file server handle it (assets, css, js, images, ...).
-		if !strings.HasSuffix(fsPath, ".php") {
+		if !strings.HasSuffix(cleanPath, ".php") {
 			return false
 		}
 		scriptFilename = fsPath
-		scriptName = filepath.ToSlash(cleanPath)
+		scriptName = cleanPath
 	}
 
 	if scriptFilename == "" {
@@ -126,8 +133,11 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 		if front == "" {
 			front = "index.php"
 		}
-		frontClean := filepath.Clean("/" + front)
-		frontPath := filepath.Join(docRoot, frontClean)
+		frontClean := path.Clean("/" + strings.ReplaceAll(front, "\\", "/"))
+		frontPath, err := phpScriptPath(docRoot, frontClean)
+		if err != nil {
+			return false
+		}
 		fi, err := os.Stat(frontPath)
 		if err != nil || fi.IsDir() {
 			// No front controller available: fall through to the static
@@ -135,7 +145,7 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 			return false
 		}
 		scriptFilename = frontPath
-		scriptName = filepath.ToSlash(frontClean)
+		scriptName = frontClean
 		// Preserve the original URI as PATH_INFO so the app sees the route.
 		pathInfo = r.URL.Path
 	}
@@ -150,6 +160,10 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 
 	var connFactory gofast.ConnFactory
 	if strings.HasPrefix(phpFPMAddr, "/") {
+		if runtime.GOOS == "windows" {
+			http.Error(w, "Unix sockets are not supported on Windows", http.StatusInternalServerError)
+			return true
+		}
 		connFactory = gofast.SimpleConnFactory("unix", phpFPMAddr)
 	} else {
 		connFactory = gofast.SimpleConnFactory("tcp", phpFPMAddr)
@@ -164,7 +178,7 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 			req.Params["DOCUMENT_ROOT"] = docRoot
 			if pathInfo != "" {
 				req.Params["PATH_INFO"] = pathInfo
-				req.Params["PATH_TRANSLATED"] = filepath.Join(docRoot, filepath.Clean("/"+pathInfo))
+				req.Params["PATH_TRANSLATED"] = fsPath
 			}
 			req.Params["REQUEST_METHOD"] = r.Method
 			req.Params["SERVER_PROTOCOL"] = r.Proto
@@ -206,3 +220,16 @@ func (p *PHPPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool {
 
 func (p *PHPPlugin) AfterRequest(w http.ResponseWriter, r *http.Request) {}
 func (p *PHPPlugin) OnExit() error                                       { return nil }
+
+func phpScriptPath(root, cleanPath string) (string, error) {
+	relPath := strings.TrimPrefix(cleanPath, "/")
+	if relPath == "" {
+		return root, nil
+	}
+
+	localPath, err := filepath.Localize(relPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, localPath), nil
+}

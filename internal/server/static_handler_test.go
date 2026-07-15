@@ -146,3 +146,19 @@ func TestServeStatic_ContentNegotiation(t *testing.T) {
 		})
 	}
 }
+
+func TestStaticLocalPath_BackslashTraversal(t *testing.T) {
+	root := t.TempDir()
+
+	cleanPath, fullPath, err := staticLocalPath(root, `\..\secret.txt`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleanPath != "/secret.txt" {
+		t.Fatalf("expected clean path /secret.txt, got %s", cleanPath)
+	}
+	expected := filepath.Join(root, "secret.txt")
+	if fullPath != expected {
+		t.Fatalf("expected local path %s, got %s", expected, fullPath)
+	}
+}
