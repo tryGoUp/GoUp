@@ -23,6 +23,11 @@ type SSLConfig struct {
 	Enabled     bool   `json:"enabled"`
 	Certificate string `json:"certificate"`
 	Key         string `json:"key"`
+	// ACME enables automatic TLS via Let's Encrypt (TLS-ALPN-01 on :443).
+	// When set, Certificate/Key are ignored for this site.
+	ACME     bool   `json:"acme"`
+	Email    string `json:"email"`     // ACME account email (recommended)
+	CacheDir string `json:"cache_dir"` // where issued certificates are cached
 }
 
 // SiteConfig contains the configuration for a single site.
@@ -79,6 +84,20 @@ func GetConfigDir() string {
 		configDir = filepath.Join(os.Getenv("HOME"), ".config", "goup")
 	}
 	return configDir
+}
+
+// GetACMEDir returns the default directory where ACME-issued certificates are
+// cached.
+func GetACMEDir() string {
+	var base string
+	if xdgDataHome := os.Getenv("XDG_DATA_HOME"); xdgDataHome != "" {
+		base = filepath.Join(xdgDataHome, "goup")
+	} else if runtime.GOOS == "windows" {
+		base = filepath.Join(os.Getenv("APPDATA"), "goup")
+	} else {
+		base = filepath.Join(os.Getenv("HOME"), ".local", "share", "goup")
+	}
+	return filepath.Join(base, "acme")
 }
 
 // GetLogDir returns the directory where log files are stored.

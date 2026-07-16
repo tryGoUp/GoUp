@@ -73,20 +73,10 @@ func startServerInstance(server *http.Server, conf config.SiteConfig, l *logger.
 
 	go func() {
 		if conf.SSL.Enabled {
-			// For a virtual-host server the caller pre-loads one certificate
-			// per domain into TLSConfig.Certificates; the tls package selects
-			// the right one by SNI. For a single-site server we load its
-			// keypair here. Either way the same certificates are shared with
+			// server.TLSConfig has already been populated by setupTLS with
+			// either static certificates (SNI-selected) or an ACME
+			// GetCertificate callback. Share the same certificate source with
 			// the QUIC (h3) server.
-			if len(server.TLSConfig.Certificates) == 0 {
-				cert, err := tls.LoadX509KeyPair(conf.SSL.Certificate, conf.SSL.Key)
-				if err != nil {
-					l.Errorf("SSL certificate error for %s: %v", conf.Domain, err)
-					return
-				}
-				server.TLSConfig.Certificates = []tls.Certificate{cert}
-			}
-
 			l.Infof("Serving %s on HTTPS port %d with HTTP/2 and HTTP/3 support", conf.Domain, conf.Port)
 
 			h3 := &http3.Server{
@@ -94,8 +84,9 @@ func startServerInstance(server *http.Server, conf config.SiteConfig, l *logger.
 				Port:    conf.Port,
 				Handler: server.Handler,
 				TLSConfig: &tls.Config{
-					MinVersion:   tls.VersionTLS12,
-					Certificates: server.TLSConfig.Certificates,
+					MinVersion:     tls.VersionTLS12,
+					Certificates:   server.TLSConfig.Certificates,
+					GetCertificate: server.TLSConfig.GetCertificate,
 				},
 			}
 			registerCloser(h3)

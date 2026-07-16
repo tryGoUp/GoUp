@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -107,6 +106,7 @@ func startSingleServer(conf config.SiteConfig, mwManager *middleware.MiddlewareM
 	}
 
 	server := createHTTPServer(conf, handler)
+	conf.SSL.Enabled = setupTLS(server, []config.SiteConfig{conf}, lg)
 	restart.SetServer(server)
 	startServerInstance(server, conf, lg)
 }
@@ -143,32 +143,7 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 		radixTree.Insert(conf.Domain, handler)
 	}
 
-	// Load one certificate per SSL-enabled domain on this port. The tls
-	// package selects the right certificate by SNI at handshake time, so
-	// virtual hosts no longer silently lose TLS (which previously served them
-	// as plaintext HTTP on 443).
-	var certs []tls.Certificate
-	sslCount := 0
-	for _, conf := range configs {
-		if !conf.SSL.Enabled {
-			continue
-		}
-		sslCount++
-		cert, err := tls.LoadX509KeyPair(conf.SSL.Certificate, conf.SSL.Key)
-		if err != nil {
-			lg.Errorf("SSL certificate error for %s: %v", conf.Domain, err)
-			continue
-		}
-		certs = append(certs, cert)
-	}
-	if sslCount > 0 && sslCount != len(configs) {
-		lg.Errorf("Port %d mixes SSL and non-SSL sites; all will be served over TLS", port)
-	}
-
 	serverConf := config.SiteConfig{Port: port}
-	if len(certs) > 0 {
-		serverConf.SSL.Enabled = true
-	}
 
 	mainHandler := func(w_ http.ResponseWriter, r_ *http.Request) {
 		host, _, err := net.SplitHostPort(r_.Host)
@@ -189,8 +164,6 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 	}
 
 	server := createHTTPServer(serverConf, http.HandlerFunc(mainHandler))
-	if len(certs) > 0 {
-		server.TLSConfig.Certificates = certs
-	}
+	serverConf.SSL.Enabled = setupTLS(server, configs, lg)
 	startServerInstance(server, serverConf, lg)
 }
