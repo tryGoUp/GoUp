@@ -24,7 +24,18 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 	// header names on every request.
 	exposeHeaders := joinHeaderNames(conf.CustomHeaders)
 
-	if conf.ProxyPass != "" {
+	if len(conf.ProxyUpstreams) > 0 {
+		// Load-balance across multiple upstreams with passive health checks.
+		lb, err := newLoadBalancer(conf.ProxyUpstreams, log)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy_upstreams: %v", err)
+		}
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
+			lb.ServeHTTP(w, r)
+		})
+
+	} else if conf.ProxyPass != "" {
 		// Set up reverse proxy handler if ProxyPass is set.
 		proxy, err := getSharedReverseProxy(conf, log)
 		if err != nil {

@@ -23,17 +23,22 @@ func (c SiteConfig) Validate() []string {
 		errs = append(errs, fmt.Sprintf("port %d is out of range (1-65535)", c.Port))
 	}
 
-	if c.ProxyPass == "" && c.RootDirectory == "" {
-		errs = append(errs, "either proxy_pass or root_directory must be set")
+	if c.ProxyPass == "" && c.RootDirectory == "" && len(c.ProxyUpstreams) == 0 {
+		errs = append(errs, "either proxy_pass, proxy_upstreams or root_directory must be set")
 	}
 	if c.ProxyPass != "" {
 		if u, err := url.Parse(c.ProxyPass); err != nil || u.Scheme == "" || u.Host == "" {
 			errs = append(errs, "proxy_pass must be an absolute URL (e.g. http://localhost:3000)")
 		}
 	}
+	for _, up := range c.ProxyUpstreams {
+		if u, err := url.Parse(up); err != nil || u.Scheme == "" || u.Host == "" {
+			errs = append(errs, "proxy_upstreams contains an invalid URL: "+up)
+		}
+	}
 
 	// Only a static site (no proxy) needs a readable root directory.
-	if c.RootDirectory != "" && c.ProxyPass == "" {
+	if c.RootDirectory != "" && c.ProxyPass == "" && len(c.ProxyUpstreams) == 0 {
 		exists, invalid := CheckPath(c.RootDirectory)
 		switch {
 		case invalid:

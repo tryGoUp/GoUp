@@ -37,6 +37,7 @@ type SiteConfig struct {
 	RootDirectory            string            `json:"root_directory"`
 	CustomHeaders            map[string]string `json:"custom_headers"`
 	ProxyPass                string            `json:"proxy_pass"`
+	ProxyUpstreams           []string          `json:"proxy_upstreams"` // load-balance across these backends
 	SSL                      SSLConfig         `json:"ssl"`
 	RequestTimeout           int               `json:"request_timeout"`     // in seconds
 	ReadHeaderTimeout        int               `json:"read_header_timeout"` // in seconds

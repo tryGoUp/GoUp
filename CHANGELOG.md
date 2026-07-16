@@ -9,6 +9,8 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 - Automatic TLS via ACME/Let's Encrypt (TLS-ALPN-01) with on-disk certificate
   caching and renewal (`ssl.acme`, `ssl.email`, `ssl.cache_dir`).
+- Reverse-proxy load balancing across multiple upstreams with passive health
+  checks, ejection and failover (`proxy_upstreams`).
 - Per-IP rate limiting (`rate_limit_rps`, `rate_limit_burst`).
 - IP allow/deny lists (`allow_ips`, `deny_ips`).
 - Request body size limit (`max_body_bytes`).
