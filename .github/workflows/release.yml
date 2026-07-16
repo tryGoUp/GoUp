@@ -1,4 +1,4 @@
-name: goreleaser
+name: release
 
 on:
   push:
@@ -46,7 +46,13 @@ jobs:
           CGO_ENABLED: 0
         run: |
           mkdir -p dist
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o dist/goup-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} cmd/goup/main.go
+          VERSION="${GITHUB_REF_NAME}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w -X github.com/mirkobrombin/goup/internal/cli.Version=${VERSION} -X github.com/mirkobrombin/goup/internal/cli.Commit=${COMMIT} -X github.com/mirkobrombin/goup/internal/cli.Date=${DATE}"
+          OUT="dist/goup-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags "${LDFLAGS}" -o "${OUT}" cmd/goup/main.go
+          sha256sum "${OUT}" | awk '{print $1}' > "${OUT}.sha256"
 
       - uses: softprops/action-gh-release@v1
         with:

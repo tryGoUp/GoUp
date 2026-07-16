@@ -182,13 +182,21 @@ goup start --tui
 - **Stop the Server:**
 
   ```bash
-  goup stop // Not implemented yet, use <Ctrl+C> to stop the server
+  goup stop
   ```
 
 - **Restart the Server:**
 
   ```bash
-  goup restart // Not implemented yet, use <Ctrl+C> to stop the server and start it again
+  goup restart
+  # Or, if running under systemd, reload without downtime:
+  #   systemctl reload goup   (sends SIGHUP)
+  ```
+
+- **Print the Version:**
+
+  ```bash
+  goup version
   ```
 
 - **Generate Password Hash:**
@@ -234,7 +242,42 @@ Each site configuration is represented by a JSON file and meets the following st
   - **enabled**: Set to `true` to enable SSL/TLS
   - **certificate**: Path to the SSL certificate file
   - **key**: Path to the SSL key file
-- **request_timeout**: Timeout for client requests in seconds
+- **request_timeout**: Read timeout for client requests in seconds (default 60; `-1` disables it)
+
+**Additional site fields (all optional):**
+
+| Field | Type | Description |
+|---|---|---|
+| `read_header_timeout` | int (s) | Header-read timeout (default 10) |
+| `idle_timeout` | int (s) | Keep-alive idle timeout (default 120) |
+| `max_header_bytes` | int | Maximum request header size |
+| `max_body_bytes` | int | Maximum request body size (0 = unlimited) |
+| `proxy_flush_interval` | duration | Reverse-proxy flush interval (e.g. `"100ms"`) |
+| `buffer_size_kb` | int | Reverse-proxy copy buffer size in KB |
+| `max_concurrent_connections` | int | Cap on in-flight requests (503 when exceeded) |
+| `enable_logging` | bool | Per-site access logging (default true) |
+| `file_server_mode` | bool | Plain directory listing, no branded pages |
+| `force_https` | bool | Redirect plain HTTP to HTTPS (put on the :80 site) |
+| `hsts` | bool | Send `Strict-Transport-Security` when served over TLS |
+| `hsts_max_age` | int (s) | HSTS max-age (default 31536000) |
+| `security_headers` | bool | Add `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` |
+| `cache_control` | string | `Cache-Control` value for static responses |
+| `allow_ips` / `deny_ips` | []CIDR | IP allow/deny lists |
+| `rate_limit_rps` | float | Per-IP requests/second (0 = disabled) |
+| `rate_limit_burst` | int | Per-IP burst size |
+| `cors` | object | CORS: `allowed_origins`, `allowed_methods`, `allowed_headers`, `allow_credentials`, `max_age` |
+| `plugin_configs` | object | Per-plugin configuration (see Plugins) |
+
+Global settings (`conf.global.json`) also support `api_bind` / `dashboard_bind`
+(bind addresses, empty = all interfaces) and `log_retention_days` (auto-purge
+logs older than N days, 0 = keep forever).
+
+Run `goup validate` to check every config file: it reports JSON typos (unknown
+fields), missing certificate/root paths, invalid ports, and cross-site conflicts
+(duplicate domains, or a port mixing SSL and non-SSL sites).
+
+See [Running in production](docs/production.md) for systemd, Docker, non-root
+port binding, and zero-downtime reloads.
 
 ## Logging
 
@@ -431,6 +474,6 @@ GoUP! is released under the [MIT License](LICENSE).
 
 ---
 
-**Note:** This project is for educational purposes and may not be suitable 
-for production environments without additional security and performance 
-considerations, yet.
+**Note:** Review the [production guide](docs/production.md) before deploying:
+run GoUp as a non-root service, secure the API/Dashboard with credentials, and
+enable TLS, HSTS, and rate limiting for internet-facing sites.
