@@ -171,6 +171,7 @@ func (b *byteSlicePool) Put(buf []byte) {
 	// a custom buffer_size_kb actually reuses its buffers instead of allocating
 	// a fresh one on every request.
 	if cap(buf) >= b.size {
+		//lint:ignore SA6002 httputil.BufferPool mandates a []byte pool.
 		b.pool.Put(buf[:b.size])
 	}
 }

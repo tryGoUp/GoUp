@@ -37,7 +37,9 @@ var upstreamProxies sync.Map // target URL -> *httputil.ReverseProxy
 // small responses do not pay a fresh 32KB allocation per request.
 type upstreamBufferPool struct{ pool sync.Pool }
 
-func (p *upstreamBufferPool) Get() []byte  { return p.pool.Get().([]byte) }
+func (p *upstreamBufferPool) Get() []byte { return p.pool.Get().([]byte) }
+
+//lint:ignore SA6002 httputil.BufferPool mandates a []byte pool.
 func (p *upstreamBufferPool) Put(b []byte) { p.pool.Put(b) }
 
 var sharedBufferPool = &upstreamBufferPool{
