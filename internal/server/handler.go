@@ -38,8 +38,12 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	} else {
 		// Static File Handler with custom design and directory listing
+		cacheControl := conf.CacheControl
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
+			if cacheControl != "" {
+				w.Header().Set("Cache-Control", cacheControl)
+			}
 			ServeStatic(w, r, conf.RootDirectory)
 		})
 	}
@@ -64,6 +68,30 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	// Apply the final chain of middleware
 	handler = siteMwManager.Apply(handler)
+
+	// Edge middleware wraps the entire chain (outermost first). Applied in
+	// reverse so ForceHTTPS ends up outermost, then IP filtering, rate limiting,
+	// body limit, CORS, and finally security headers closest to the site chain.
+	if conf.SecurityHeaders || conf.HSTS {
+		handler = middleware.SecurityHeadersMiddleware(conf.HSTS, conf.HSTSMaxAge, conf.SecurityHeaders)(handler)
+	}
+	if conf.CORS != nil {
+		handler = middleware.CORSMiddleware(conf.CORS)(handler)
+	}
+	// Body limit is opt-in: a global default would break large uploads streamed
+	// to proxied/plugin backends. Enforce only when the site configures it.
+	if conf.MaxBodyBytes > 0 {
+		handler = middleware.BodyLimitMiddleware(conf.MaxBodyBytes)(handler)
+	}
+	if conf.RateLimitRPS > 0 {
+		handler = middleware.RateLimitMiddleware(conf.RateLimitRPS, conf.RateLimitBurst)(handler)
+	}
+	if len(conf.AllowIPs) > 0 || len(conf.DenyIPs) > 0 {
+		handler = middleware.IPFilterMiddleware(conf.AllowIPs, conf.DenyIPs)(handler)
+	}
+	if conf.ForceHTTPS {
+		handler = middleware.ForceHTTPSMiddleware()(handler)
+	}
 
 	return handler, nil
 }

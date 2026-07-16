@@ -43,7 +43,29 @@ type SiteConfig struct {
 	EnableLogging            *bool             `json:"enable_logging,omitempty"` // Default true if nil
 	FileServerMode           bool              `json:"file_server_mode"`         // Disables custom pages, enables directory listing
 
+	// Edge hardening and HTTP feature knobs.
+	MaxBodyBytes    int64       `json:"max_body_bytes"`   // 0 = default (10MB), -1 = unlimited
+	ForceHTTPS      bool        `json:"force_https"`      // redirect plain HTTP to HTTPS
+	HSTS            bool        `json:"hsts"`             // send Strict-Transport-Security when served over TLS
+	HSTSMaxAge      int         `json:"hsts_max_age"`     // seconds (default 31536000)
+	SecurityHeaders bool        `json:"security_headers"` // X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+	CacheControl    string      `json:"cache_control"`    // Cache-Control value applied to static responses
+	AllowIPs        []string    `json:"allow_ips"`        // CIDR allowlist (if set, only these may connect)
+	DenyIPs         []string    `json:"deny_ips"`         // CIDR denylist
+	RateLimitRPS    float64     `json:"rate_limit_rps"`   // per-IP requests/sec (0 = disabled)
+	RateLimitBurst  int         `json:"rate_limit_burst"` // per-IP burst size
+	CORS            *CORSConfig `json:"cors,omitempty"`
+
 	PluginConfigs map[string]any `json:"plugin_configs"`
+}
+
+// CORSConfig configures Cross-Origin Resource Sharing for a site.
+type CORSConfig struct {
+	AllowedOrigins   []string `json:"allowed_origins"` // "*" allowed
+	AllowedMethods   []string `json:"allowed_methods"`
+	AllowedHeaders   []string `json:"allowed_headers"`
+	AllowCredentials bool     `json:"allow_credentials"`
+	MaxAge           int      `json:"max_age"` // preflight cache seconds
 }
 
 // GetConfigDir returns the directory where configuration files are stored.
