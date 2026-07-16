@@ -10,12 +10,15 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 ## Features
 
 - Serve static files from a specified root directory
-- Set up reverse proxies to backend services
-- Support for SSL/TLS with custom certificates
-- Custom headers for HTTP responses
+- Reverse proxy to a single backend or load-balance across several (`proxy_upstreams`) with health checks and failover
+- SSL/TLS with custom certificates or automatic Let's Encrypt certificates (`ssl.acme`)
+- HTTP-to-HTTPS redirect, HSTS, and configurable security headers
+- Edge hardening: per-IP rate limiting, IP allow/deny lists, request body limits, CORS
+- Custom headers and `Cache-Control` for HTTP responses
 - Support for multiple domains and virtual hosting
 - Native Authoritative DNS Server (A, AAAA, CNAME, TXT, MX, NS)
-- Logging to both console and files - JSON formatted (structured logs)
+- Logging to both console and files - JSON formatted (structured logs), with date rotation and retention
+- Zero-downtime config reload (`SIGHUP`), graceful shutdown, and a memory watchdog (SafeGuard)
 - Optional TUI interface for real-time monitoring
 - HTTP/2 and HTTP/3 support (not configurable, HTTP/1.1 is used for unencrypted connections, HTTP/2 and HTTP/3 for encrypted connections)
 
@@ -238,10 +241,14 @@ Each site configuration is represented by a JSON file and meets the following st
 - **root_directory**: Path to the directory containing static files. Leave empty if using `proxy_pass`
 - **custom_headers**: Key-value pairs of custom headers to include in responses
 - **proxy_pass**: URL to the backend service for reverse proxying. Leave empty if serving static files
+- **proxy_upstreams**: List of backend URLs to load-balance across (round-robin with failover). Takes precedence over `proxy_pass`
 - **ssl**:
   - **enabled**: Set to `true` to enable SSL/TLS
   - **certificate**: Path to the SSL certificate file
   - **key**: Path to the SSL key file
+  - **acme**: Set to `true` to obtain and renew a Let's Encrypt certificate automatically (ignores certificate/key). Requires the domain to resolve to this host and port 443 to be reachable
+  - **email**: ACME account email (recommended)
+  - **cache_dir**: Where issued certificates are cached
 - **request_timeout**: Read timeout for client requests in seconds (default 60; `-1` disables it)
 
 **Additional site fields (all optional):**
