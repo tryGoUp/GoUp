@@ -11,9 +11,20 @@ import (
 
 var srv *http.Server
 
+// shutdownFn, when set, gracefully drains every running server (web, API,
+// dashboard, HTTP/3, DNS) before the process re-execs. It supersedes the
+// single-server srv, which only ever tracked the last-registered instance.
+var shutdownFn func(time.Duration) error
+
 // SetServer sets the server instance to be restarted.
 func SetServer(s *http.Server) {
 	srv = s
+}
+
+// SetShutdownFunc registers a graceful shutdown routine that closes all
+// running servers. Set by the server package at startup.
+func SetShutdownFunc(fn func(time.Duration) error) {
+	shutdownFn = fn
 }
 
 // RestartHandler handles the HTTP request to restart the server.
@@ -27,7 +38,11 @@ func RestartHandler(w http.ResponseWriter, r *http.Request) {
 
 // Restart gracefully shuts down the server and re-executes the process.
 func Restart() {
-	if srv != nil {
+	if shutdownFn != nil {
+		if err := shutdownFn(10 * time.Second); err != nil {
+			log.Printf("Error during shutdown: %v", err)
+		}
+	} else if srv != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {

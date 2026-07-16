@@ -239,7 +239,11 @@ var startDNSCmd = &cobra.Command{
 }
 
 func startDNS(cmd *cobra.Command, args []string) {
-	configs, _ := loadConfigs()
+	configs, err := loadConfigs()
+	if err != nil {
+		fmt.Printf("Error loading configurations: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := pidfile.Write(); err != nil {
 		fmt.Printf("Warning: could not write PID file: %v\n", err)
@@ -296,20 +300,40 @@ var stopCmd = &cobra.Command{
 			fmt.Printf("Error sending signal: %v\n", err)
 			os.Exit(1)
 		}
-		done := make(chan struct{})
-		go func() {
-			proc.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
+		if waitForExit(pid, 10*time.Second) {
 			fmt.Println("Server stopped.")
-		case <-time.After(10 * time.Second):
+		} else {
 			fmt.Println("Server did not stop in time, forcing...")
-			proc.Kill()
+			_ = proc.Kill()
+			waitForExit(pid, 5*time.Second)
 		}
 		pidfile.Remove()
 	},
+}
+
+// processAlive reports whether a process with the given PID is currently
+// running. On Unix, signal 0 performs error checking without delivering a
+// signal.
+func processAlive(pid int) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+// waitForExit polls until the process is gone or the timeout elapses. It
+// returns true if the process exited. This works for non-child processes,
+// unlike (*os.Process).Wait.
+func waitForExit(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return !processAlive(pid)
 }
 
 var restartCmd = &cobra.Command{
@@ -326,15 +350,36 @@ var restartCmd = &cobra.Command{
 			fmt.Printf("Error finding process %d: %v\n", pid, err)
 			os.Exit(1)
 		}
-		proc.Signal(syscall.SIGTERM)
-		time.Sleep(500 * time.Millisecond)
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			fmt.Printf("Error sending signal: %v\n", err)
+			os.Exit(1)
+		}
+		// Wait for the old process to release its PID file, ports and
+		// listeners before starting a fresh instance, otherwise the two
+		// race over the PID file and the sockets.
+		if !waitForExit(pid, 15*time.Second) {
+			fmt.Println("Previous instance did not stop in time, forcing...")
+			_ = proc.Kill()
+			waitForExit(pid, 5*time.Second)
+		}
+
 		exe, err := os.Executable()
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
-		argsEnv := os.Environ()
-		if err := syscall.Exec(exe, os.Args, argsEnv); err != nil {
+
+		// Re-exec as "start" (not "restart"), preserving the config flags so
+		// the new process actually serves traffic instead of re-running the
+		// restart command against a now-stopped server.
+		newArgs := []string{exe, "start"}
+		if configPath != "" {
+			newArgs = append(newArgs, "--config", configPath)
+		}
+		if globalConfigPath != "" {
+			newArgs = append(newArgs, "--global-config", globalConfigPath)
+		}
+		if err := syscall.Exec(exe, newArgs, os.Environ()); err != nil {
 			fmt.Printf("Error restarting: %v\n", err)
 			os.Exit(1)
 		}
@@ -348,15 +393,39 @@ var validateCmd = &cobra.Command{
 }
 
 func validate(cmd *cobra.Command, args []string) {
-	configs, err := config.LoadAllConfigs()
+	configDir := config.GetConfigDir()
+	files, err := os.ReadDir(configDir)
 	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
+		fmt.Printf("Error reading configuration directory %s: %v\n", configDir, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Validating configurations in %s:\n", config.GetConfigDir())
-	for _, conf := range configs {
+	fmt.Printf("Validating configurations in %s:\n", configDir)
+	hasError := false
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".json" {
+			continue
+		}
+		if file.Name() == "conf.global.json" {
+			continue
+		}
+		fullPath, err := config.SafeJoin(configDir, file.Name())
+		if err != nil {
+			fmt.Printf("- %s: INVALID PATH (%v)\n", file.Name(), err)
+			hasError = true
+			continue
+		}
+		conf, err := config.LoadConfig(fullPath)
+		if err != nil {
+			fmt.Printf("- %s: FAILED (%v)\n", file.Name(), err)
+			hasError = true
+			continue
+		}
 		fmt.Printf("- %s: OK\n", conf.Domain)
+	}
+
+	if hasError {
+		os.Exit(1)
 	}
 }
 

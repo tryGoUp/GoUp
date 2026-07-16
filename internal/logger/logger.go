@@ -1,14 +1,10 @@
 package logger
 
 import (
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
-	"time"
 
-	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/muesli/termenv"
 	"github.com/rs/zerolog"
 )
@@ -124,19 +120,9 @@ func (l *Logger) Warnf(format string, args ...any) {
 // NewLogger creates a new Logger that writes JSON to files and colored
 // logs to stdout.
 func NewLogger(identifier string, fields Fields) (*Logger, error) {
-	logDir := filepath.Join(
-		config.GetLogDir(),
-		identifier,
-		fmt.Sprintf("%d", time.Now().Year()),
-		fmt.Sprintf("%02d", time.Now().Month()),
-	)
-	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
-		return nil, err
-	}
-
-	// Log file name format: 03.log (day.log)
-	logFile := filepath.Join(logDir, fmt.Sprintf("%02d.log", time.Now().Day()))
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	// A date-partitioned writer that reopens the file when the day rolls over,
+	// so a process running past midnight keeps writing to the right day's log.
+	file, err := newRotatingFileWriter(identifier, "")
 	if err != nil {
 		return nil, err
 	}
@@ -159,19 +145,8 @@ func NewLogger(identifier string, fields Fields) (*Logger, error) {
 
 // NewPluginLogger creates a plugin-specific log file (JSON format, no stdout).
 func NewPluginLogger(siteDomain, pluginName string) (*Logger, error) {
-	logDir := filepath.Join(
-		config.GetLogDir(),
-		siteDomain,
-		fmt.Sprintf("%d", time.Now().Year()),
-		fmt.Sprintf("%02d", time.Now().Month()),
-	)
-	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
-		return nil, err
-	}
-
-	// Log file format: 03-NomePlugin.log (day-PluginName.log)
-	logFile := filepath.Join(logDir, fmt.Sprintf("%02d-%s.log", time.Now().Day(), pluginName))
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	// Date-partitioned, day-rotating writer (day-PluginName.log).
+	file, err := newRotatingFileWriter(siteDomain, pluginName)
 	if err != nil {
 		return nil, err
 	}

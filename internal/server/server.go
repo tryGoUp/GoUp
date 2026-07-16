@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -65,15 +66,6 @@ func StartServers(configs []config.SiteConfig, enableTUI bool, enableBench bool,
 	}
 }
 
-func anyHasSSL(confs []config.SiteConfig) bool {
-	for _, c := range confs {
-		if c.SSL.Enabled {
-			return true
-		}
-	}
-	return false
-}
-
 // startSingleServer starts a server for a single site configuration.
 func startSingleServer(conf config.SiteConfig, mwManager *middleware.MiddlewareManager, pm *plugin.PluginManager) {
 	identifier := conf.Domain
@@ -92,11 +84,8 @@ func startSingleServer(conf config.SiteConfig, mwManager *middleware.MiddlewareM
 		}
 	}
 
-	// Initialize plugins for this site
-	if err := pm.InitPluginsForSite(conf, lg); err != nil {
-		lg.Errorf("Error initializing plugins for site %s: %v", conf.Domain, err)
-		return
-	}
+	// Plugins are initialized up front in launchWebComponents (serially, before
+	// any server serves) to avoid racing the shared plugin state maps.
 
 	// Add plugin middleware
 	mwManagerCopy := mwManager.Copy()
@@ -129,11 +118,6 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 			}
 		}
 
-		if err := pm.InitPluginsForSite(conf, lg); err != nil {
-			lg.Errorf("Error initializing plugins for site %s: %v", conf.Domain, err)
-			continue
-		}
-
 		mwManagerCopy := mwManager.Copy()
 		mwManagerCopy.Use(plugin.PluginMiddleware(pm))
 
@@ -150,7 +134,32 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 		radixTree.Insert(conf.Domain, handler)
 	}
 
+	// Load one certificate per SSL-enabled domain on this port. The tls
+	// package selects the right certificate by SNI at handshake time, so
+	// virtual hosts no longer silently lose TLS (which previously served them
+	// as plaintext HTTP on 443).
+	var certs []tls.Certificate
+	sslCount := 0
+	for _, conf := range configs {
+		if !conf.SSL.Enabled {
+			continue
+		}
+		sslCount++
+		cert, err := tls.LoadX509KeyPair(conf.SSL.Certificate, conf.SSL.Key)
+		if err != nil {
+			lg.Errorf("SSL certificate error for %s: %v", conf.Domain, err)
+			continue
+		}
+		certs = append(certs, cert)
+	}
+	if sslCount > 0 && sslCount != len(configs) {
+		lg.Errorf("Port %d mixes SSL and non-SSL sites; all will be served over TLS", port)
+	}
+
 	serverConf := config.SiteConfig{Port: port}
+	if len(certs) > 0 {
+		serverConf.SSL.Enabled = true
+	}
 
 	mainHandler := func(w_ http.ResponseWriter, r_ *http.Request) {
 		host, _, err := net.SplitHostPort(r_.Host)
@@ -171,5 +180,8 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 	}
 
 	server := createHTTPServer(serverConf, http.HandlerFunc(mainHandler))
+	if len(certs) > 0 {
+		server.TLSConfig.Certificates = certs
+	}
 	startServerInstance(server, serverConf, lg)
 }

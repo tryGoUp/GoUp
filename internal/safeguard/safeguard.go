@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"runtime/pprof"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/mirkobrombin/goup/internal/restart"
+	"github.com/shirou/gopsutil/process"
 )
+
+// self is the current process handle, used to read the live resident set size.
+var self *process.Process
 
 var log *logger.Logger
 
@@ -45,11 +48,18 @@ func Start() {
 		return
 	}
 
-	interval := 10 * time.Second
+	interval := 30 * time.Second
 	if conf.CheckInterval != "" {
 		if d, err := time.ParseDuration(conf.CheckInterval); err == nil {
 			interval = d
 		}
+	}
+
+	if p, err := process.NewProcess(int32(os.Getpid())); err == nil {
+		self = p
+	} else {
+		log.Errorf("[SafeGuard] Unable to read process memory, disabling: %v", err)
+		return
 	}
 
 	go func() {
@@ -65,10 +75,18 @@ func Start() {
 }
 
 func checkMemory(limitMB int) {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	usageMB := int(m.Sys / 1024 / 1024)
+	if self == nil {
+		return
+	}
+	// Use the live resident set size (actual physical memory in use), not
+	// runtime.MemStats.Sys, which reports reserved address space and never
+	// meaningfully shrinks, causing false restarts.
+	memInfo, err := self.MemoryInfo()
+	if err != nil {
+		log.Errorf("[SafeGuard] Failed to read memory info: %v", err)
+		return
+	}
+	usageMB := int(memInfo.RSS / 1024 / 1024)
 
 	if usageMB > limitMB {
 		log.Errorf("CRITICAL: Memory usage %dMB exceeded limit %dMB. FORCE RESTARTING...", usageMB, limitMB)

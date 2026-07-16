@@ -77,17 +77,6 @@ func TestTokenAuthMiddleware(t *testing.T) {
 		{"ValidTokenHeader", map[string]string{"X-API-Token": token}, http.StatusOK},
 		{"ValidBearerToken", map[string]string{"Authorization": "Bearer " + token}, http.StatusOK},
 		{"InvalidToken", map[string]string{"X-API-Token": "wrong"}, http.StatusUnauthorized},
-		{"NoToken", map[string]string{}, http.StatusOK},
-	}
-
-	tests = []struct {
-		name           string
-		headers        map[string]string
-		expectedStatus int
-	}{
-		{"ValidTokenHeader", map[string]string{"X-API-Token": token}, http.StatusOK},
-		{"ValidBearerToken", map[string]string{"Authorization": "Bearer " + token}, http.StatusOK},
-		{"InvalidToken", map[string]string{"X-API-Token": "wrong"}, http.StatusUnauthorized},
 		{"NoToken", map[string]string{}, http.StatusUnauthorized},
 	}
 
@@ -107,31 +96,32 @@ func TestTokenAuthMiddleware(t *testing.T) {
 	}
 }
 
-func TestAuthSkippedIfUnconfigured(t *testing.T) {
-	// Setup: Empty config
+func TestAuthDeniedIfUnconfigured(t *testing.T) {
+	// Setup: Empty config. Auth must fail closed (deny), never fail open, so an
+	// admin surface is never served without credentials.
 	config.GlobalConf = &config.GlobalConfig{}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	t.Run("BasicAuthSkipped", func(t *testing.T) {
+	t.Run("BasicAuthDenied", func(t *testing.T) {
 		middleware := BasicAuthMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
 		rec := httptest.NewRecorder()
 		middleware.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status %v, got %v", http.StatusOK, rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status %v, got %v", http.StatusUnauthorized, rec.Code)
 		}
 	})
 
-	t.Run("TokenAuthSkipped", func(t *testing.T) {
+	t.Run("TokenAuthDenied", func(t *testing.T) {
 		middleware := TokenAuthMiddleware(nextHandler)
 		req := httptest.NewRequest("GET", "/", nil)
 		rec := httptest.NewRecorder()
 		middleware.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status %v, got %v", http.StatusOK, rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status %v, got %v", http.StatusUnauthorized, rec.Code)
 		}
 	})
 }

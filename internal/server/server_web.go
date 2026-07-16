@@ -12,6 +12,8 @@ import (
 	"github.com/mirkobrombin/goup/internal/dashboard"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/mirkobrombin/goup/internal/plugin"
+	"github.com/mirkobrombin/goup/internal/restart"
+	"github.com/mirkobrombin/goup/internal/safeguard"
 	"github.com/mirkobrombin/goup/internal/server/middleware"
 	"github.com/mirkobrombin/goup/internal/tui"
 )
@@ -70,8 +72,43 @@ func launchWebComponents(configs []config.SiteConfig, enableTUI bool, enableBenc
 		return
 	}
 
+	// Initialize plugins for every site up front, serially, BEFORE any server
+	// starts serving. The plugin config/state maps are shared across all ports;
+	// doing this from the per-port goroutines raced writers against readers in
+	// HandleRequest and could crash with "concurrent map read and map write".
+	for port, confs := range portConfigs {
+		identifier := confs[0].Domain
+		if len(confs) > 1 {
+			identifier = fmt.Sprintf("port_%d", port)
+		}
+		lg := loggers[identifier]
+		if lg == nil {
+			// Logger setup failed earlier; skip this port rather than deref a
+			// nil logger inside plugin init or the request path.
+			continue
+		}
+		for _, conf := range confs {
+			if err := pluginManager.InitPluginsForSite(conf, lg); err != nil {
+				lg.Errorf("Error initializing plugins for site %s: %v", conf.Domain, err)
+			}
+		}
+	}
+
+	// Make restart drain every registered server, and let SafeGuard watch
+	// memory once everything is wired up.
+	restart.SetShutdownFunc(ShutdownServers)
+	safeguard.Start()
+
 	// Start servers
 	for port, confs := range portConfigs {
+		identifier := confs[0].Domain
+		if len(confs) > 1 {
+			identifier = fmt.Sprintf("port_%d", port)
+		}
+		if loggers[identifier] == nil {
+			// No logger => plugin init was skipped; do not serve this port.
+			continue
+		}
 		wg.Add(1)
 		go func(port int, confs []config.SiteConfig) {
 			defer wg.Done()

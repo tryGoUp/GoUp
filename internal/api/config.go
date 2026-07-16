@@ -30,6 +30,18 @@ func updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
+
+	// Reject changes that would leave an admin surface enabled without
+	// credentials (which would otherwise disable authentication entirely).
+	if newConf.EnableAPI && newConf.Account.APIToken == "" {
+		http.Error(w, "Refusing to enable the API without account.api_token", http.StatusBadRequest)
+		return
+	}
+	if newConf.DashboardPort != 0 && (newConf.Account.Username == "" || newConf.Account.PasswordHash == "") {
+		http.Error(w, "Refusing to enable the dashboard without account.username and account.password_hash", http.StatusBadRequest)
+		return
+	}
+
 	config.GlobalConfMu.Lock()
 	config.GlobalConf = &newConf
 	config.GlobalConfMu.Unlock()

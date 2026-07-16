@@ -24,12 +24,6 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 - [DNS Server Guide](docs/dns.md) explanation of the DNS module configuration and usage.
 - [Kamal Proxy Guide](docs/kamal-proxy.md) for blue/green deployments with kamal-proxy.
 
-## Future Plans
-
-- API for dynamic configuration changes
-- Docker/Podman support for easy deployment
-
-
 ## API & Dashboard
 
 GoUp includes a built-in REST API and a Web Dashboard for management.
@@ -39,7 +33,9 @@ To enable them, edit your global configuration file (`~/.config/goup/conf.global
 
 ### Authentication
 
-Security is mandatory when enabling the API/Dashboard. GoUp uses:
+Security is mandatory when enabling the API/Dashboard, and it is enforced:
+GoUp refuses to start the API without an `api_token`, and refuses to start the
+Dashboard without a `username` and `password_hash`. GoUp uses:
 - **Basic Auth** for the Dashboard.
 - **Token Auth** for the API.
 
@@ -71,7 +67,7 @@ GoUp handles compression automatically with a dual-layer strategy:
 
 GoUp includes a built-in **SafeGuard** system that monitors memory usage and automatically restarts the process if it exceeds safety limits, ensuring long-term stability.
 
-- **Enabled by Default**: Checks memory usage every 30 seconds.
+- **Enabled by Default**: Checks resident memory (RSS) every 30 seconds.
 - **Auto-Dump**: Saves a Pprof heap dump before restarting for easier debugging.
 - **Seamless Restart**: Uses `syscall.Exec` to replace the process immediately.
 
@@ -79,13 +75,15 @@ Configuration (in `~/.config/goup/conf.global.json`):
 
 ```json
 {
-  "safe_guard": {
+  "safeguard": {
     "enable": true,
     "max_memory_mb": 1024,
-    "check_interval": 30
+    "check_interval": "30s"
   }
 }
 ```
+
+`check_interval` is a Go duration string (e.g. `"30s"`, `"1m"`).
 
 ## Installation
 

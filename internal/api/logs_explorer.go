@@ -3,7 +3,6 @@ package api
 
 import (
 	"io/fs"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -123,12 +122,16 @@ func getLogFileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fileName is required", http.StatusBadRequest)
 		return
 	}
-	fullPath := filepath.Join(config.GetLogDir(), fileName)
+	fullPath, err := config.SafeJoin(config.GetLogDir(), fileName)
+	if err != nil {
+		http.Error(w, "Invalid log file path", http.StatusBadRequest)
+		return
+	}
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		http.Error(w, "Log file not found", http.StatusNotFound)
 		return
 	}
-	data, err := ioutil.ReadFile(fullPath)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		http.Error(w, "Failed to read log file", http.StatusInternalServerError)
 		return

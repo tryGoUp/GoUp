@@ -1,7 +1,10 @@
 package plugins
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -12,6 +15,20 @@ import (
 	"github.com/mirkobrombin/goup/internal/logger"
 	"github.com/mirkobrombin/goup/internal/plugin"
 )
+
+// sessionCookieName is the cookie that carries the opaque session token. Auth
+// is bound to this unguessable token, never to the client IP (which is
+// spoofable via X-Forwarded-For and shared behind NAT).
+const sessionCookieName = "goup_session"
+
+// newSessionToken returns a cryptographically random opaque session token.
+func newSessionToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
 
 // AuthPluginConfig represents the configuration for the AuthPlugin.
 type AuthPluginConfig struct {
@@ -172,10 +189,12 @@ func (p *AuthPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool 
 		return false
 	}
 
-	ip := getClientIP(r)
-	if sess, exists := st.getSession(ip); exists {
-		p.DomainLogger.Infof("[AuthPlugin] Valid session for IP=%s user=%s", ip, sess.Username)
-		return false
+	// A valid session cookie authenticates the request.
+	if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
+		if sess, exists := st.getSession(cookie.Value); exists {
+			p.DomainLogger.Infof("[AuthPlugin] Valid session for user=%s", sess.Username)
+			return false
+		}
 	}
 
 	// No valid session, check for Authorization header.
@@ -192,38 +211,51 @@ func (p *AuthPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) bool 
 		return true
 	}
 
-	expectedPassword, userExists := conf.Credentials[username]
-	if !userExists || expectedPassword != password {
+	if !credentialsValid(conf.Credentials, username, password) {
 		unauthorized(w)
 		return true
 	}
 
-	st.createSession(ip, username, conf.SessionExpiration, p.PluginLogger)
-	p.PluginLogger.Infof("[AuthPlugin] Authenticated IP=%s user=%s", ip, username)
+	token, err := newSessionToken()
+	if err != nil {
+		p.PluginLogger.Errorf("[AuthPlugin] Failed to generate session token: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return true
+	}
+	st.createSession(token, username, conf.SessionExpiration, p.PluginLogger)
+
+	cookie := &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil,
+	}
+	if conf.SessionExpiration > 0 {
+		cookie.MaxAge = conf.SessionExpiration
+	}
+	http.SetCookie(w, cookie)
+	p.PluginLogger.Infof("[AuthPlugin] Authenticated user=%s", username)
 
 	return false
 }
 
+// credentialsValid checks the supplied username/password against the configured
+// credentials in constant time, and always performs a comparison (even for an
+// unknown user) so response timing does not leak which usernames exist.
+func credentialsValid(creds map[string]string, username, password string) bool {
+	expected, userExists := creds[username]
+	if !userExists {
+		// Compare against a dummy of equal work to equalize timing.
+		subtle.ConstantTimeCompare([]byte(password), []byte(password))
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(password)) == 1
+}
+
 func (p *AuthPlugin) AfterRequest(w http.ResponseWriter, r *http.Request) {}
 func (p *AuthPlugin) OnExit() error                                       { return nil }
-
-// getClientIP extracts the client's IP address from the request.
-func getClientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	if ips := r.Header.Get("X-Forwarded-For"); ips != "" {
-		// X-Forwarded-For may contain multiple IPs, take the first one
-		return strings.Split(ips, ",")[0]
-	}
-
-	// Fallback to RemoteAddr
-	ip := r.RemoteAddr
-	if colonIndex := strings.LastIndex(ip, ":"); colonIndex != -1 {
-		ip = ip[:colonIndex]
-	}
-	return ip
-}
 
 // parseBasicAuth parses the Basic Authentication header.
 func parseBasicAuth(authHeader string) (username, password string, ok bool) {
@@ -250,11 +282,11 @@ func unauthorized(w http.ResponseWriter) {
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-// getSession retrieves a session for the given IP, if it exists and is valid.
-func (s *AuthPluginState) getSession(ip string) (session, bool) {
+// getSession retrieves a session for the given token, if it exists and is valid.
+func (s *AuthPluginState) getSession(token string) (session, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	sess, exists := s.sessions[ip]
+	sess, exists := s.sessions[token]
 	if !exists {
 		return session{}, false
 	}
@@ -266,8 +298,8 @@ func (s *AuthPluginState) getSession(ip string) (session, bool) {
 	return sess, true
 }
 
-// createSession creates a new session for the given IP and username.
-func (s *AuthPluginState) createSession(ip, username string, expiration int, l *logger.Logger) {
+// createSession stores a new session under the given opaque token.
+func (s *AuthPluginState) createSession(token, username string, expiration int, l *logger.Logger) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -275,12 +307,12 @@ func (s *AuthPluginState) createSession(ip, username string, expiration int, l *
 	if expiration != -1 {
 		expiry = time.Now().Add(time.Duration(expiration) * time.Second)
 	}
-	s.sessions[ip] = session{Username: username, Expiry: expiry}
+	s.sessions[token] = session{Username: username, Expiry: expiry}
 
 	if expiration != -1 {
-		l.Infof("[AuthPlugin] Created session IP=%s user=%s expires=%v", ip, username, expiry)
+		l.Infof("[AuthPlugin] Created session user=%s expires=%v", username, expiry)
 	} else {
-		l.Infof("[AuthPlugin] Created session IP=%s user=%s never expires", ip, username)
+		l.Infof("[AuthPlugin] Created session user=%s never expires", username)
 	}
 }
 
@@ -290,10 +322,10 @@ func (s *AuthPluginState) cleanupExpiredSessions(interval time.Duration, l *logg
 	defer ticker.Stop()
 	for range ticker.C {
 		s.mu.Lock()
-		for ip, sess := range s.sessions {
+		for token, sess := range s.sessions {
 			if !sess.Expiry.IsZero() && sess.Expiry.Before(time.Now()) {
-				delete(s.sessions, ip)
-				l.Infof("[AuthPlugin] Session expired removed IP=%s user=%s", ip, sess.Username)
+				delete(s.sessions, token)
+				l.Infof("[AuthPlugin] Session expired removed user=%s", sess.Username)
 			}
 		}
 		s.mu.Unlock()

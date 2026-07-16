@@ -19,7 +19,7 @@ func launchDNS(wg *sync.WaitGroup) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			dns.Start(conf.DNS)
+			dns.Start(conf.DNS, registerCloser)
 		}()
 	}
 }

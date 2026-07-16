@@ -15,6 +15,10 @@ type DNSConfig struct {
 	Port              int                    `json:"port"`               // Default: 53
 	UpstreamResolvers []string               `json:"upstream_resolvers"` // Optional forwarding
 	Zones             map[string][]DNSRecord `json:"zones"`              // zone -> records
+	// AllowRecursionFrom lists CIDRs allowed to use the forwarder (recursion).
+	// When empty, recursion is restricted to loopback and private networks so
+	// the server is not an open resolver / amplification vector.
+	AllowRecursionFrom []string `json:"allow_recursion_from"`
 }
 
 // DefaultDNSConfig returns the default DNS configuration.

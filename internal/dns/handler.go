@@ -30,6 +30,9 @@ type DNSHandler struct {
 	// names records every FQDN that exists in a zone, for NXDOMAIN vs NODATA.
 	names map[string]bool
 
+	// allowRecursion lists the networks permitted to use the forwarder.
+	allowRecursion []*net.IPNet
+
 	client *dns.Client
 }
 
@@ -48,7 +51,49 @@ func NewDNSHandler(conf *config.DNSConfig) (*DNSHandler, error) {
 		client:     &dns.Client{Timeout: 5 * time.Second},
 	}
 	h.buildIndex()
+	h.allowRecursion = buildRecursionACL(conf.AllowRecursionFrom, l)
 	return h, nil
+}
+
+// buildRecursionACL parses the configured CIDRs. When none are configured it
+// defaults to loopback and RFC1918/ULA private ranges, so the forwarder is
+// never open to the public Internet by default.
+func buildRecursionACL(cidrs []string, l *logger.Logger) []*net.IPNet {
+	if len(cidrs) == 0 {
+		cidrs = []string{
+			"127.0.0.0/8", "::1/128",
+			"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+			"fc00::/7", "fe80::/10",
+		}
+	}
+	var nets []*net.IPNet
+	for _, c := range cidrs {
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			l.Errorf("Invalid allow_recursion_from CIDR %q: %v", c, err)
+			continue
+		}
+		nets = append(nets, n)
+	}
+	return nets
+}
+
+// recursionAllowed reports whether the client address may use the forwarder.
+func (h *DNSHandler) recursionAllowed(addr net.Addr) bool {
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		host = addr.String()
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range h.allowRecursion {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildIndex pre-compiles every configured record into ready-to-serve RRs.
@@ -90,10 +135,13 @@ func (h *DNSHandler) buildIndex() {
 	})
 }
 
-// matchZone returns the longest configured zone that is a suffix of name.
+// matchZone returns the longest configured zone that contains name, matching
+// only on label boundaries so that "evilexample.com." does not match the zone
+// "example.com".
 func (h *DNSHandler) matchZone(name string) string {
 	for _, z := range h.zones {
-		if strings.HasSuffix(name, z+".") {
+		zoneDot := z + "."
+		if name == zoneDot || strings.HasSuffix(name, "."+zoneDot) {
 			return z
 		}
 	}
@@ -111,9 +159,15 @@ func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 		zone := h.matchZone(name)
 
-		// If no zone found, try forwarding if configured
+		// If no zone found, try forwarding if configured and permitted.
 		if zone == "" {
 			if len(h.Config.UpstreamResolvers) > 0 {
+				if !h.recursionAllowed(w.RemoteAddr()) {
+					m := new(dns.Msg)
+					m.SetRcode(r, dns.RcodeRefused)
+					_ = w.WriteMsg(m)
+					return
+				}
 				h.handleForwarding(w, r)
 				return
 			}
@@ -134,7 +188,21 @@ func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	w.WriteMsg(msg)
+	// Set the TC (truncated) bit when the UDP response exceeds the client's
+	// advertised buffer, so the client retries over TCP instead of timing out.
+	if _, isUDP := w.RemoteAddr().(*net.UDPAddr); isUDP {
+		maxSize := dns.MinMsgSize
+		if opt := r.IsEdns0(); opt != nil {
+			if sz := int(opt.UDPSize()); sz > maxSize {
+				maxSize = sz
+			}
+		}
+		msg.Truncate(maxSize)
+	}
+
+	if err := w.WriteMsg(msg); err != nil {
+		h.Logger.Errorf("Failed to write DNS response: %v", err)
+	}
 
 	// Log after answering, off the response latency path.
 	if clientIP, _, err := net.SplitHostPort(w.RemoteAddr().String()); err == nil {
