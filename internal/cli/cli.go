@@ -23,11 +23,19 @@ var benchMode bool
 var configPath string
 var globalConfigPath string
 
+// Build metadata, injected at release time via -ldflags -X.
+var (
+	Version = "dev"
+	Commit  = "none"
+	Date    = "unknown"
+)
+
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
-	Use:   "goup",
-	Short: "GoUP is a minimal configurable web server",
-	Long:  `GoUP is a minimal configurable web server written in Go.`,
+	Use:     "goup",
+	Short:   "GoUP is a minimal configurable web server",
+	Long:    `GoUP is a minimal configurable web server written in Go.`,
+	Version: fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, Date),
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if err := config.LoadGlobalConfig(globalConfigPath); err != nil {
 			fmt.Printf("Error loading global config: %v\n", err)
@@ -55,6 +63,7 @@ func init() {
 	rootCmd.AddCommand(pluginsCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(restartCmd)
+	rootCmd.AddCommand(versionCmd)
 
 	startCmd.Flags().BoolVarP(&tuiMode, "tui", "t", false, "Enable TUI mode")
 	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
@@ -392,36 +401,46 @@ var validateCmd = &cobra.Command{
 	Run:   validate,
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the GoUp version",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("goup %s\ncommit: %s\nbuilt:  %s\n", Version, Commit, Date)
+	},
+}
+
 func validate(cmd *cobra.Command, args []string) {
 	configDir := config.GetConfigDir()
-	files, err := os.ReadDir(configDir)
+	fmt.Printf("Validating configurations in %s:\n", configDir)
+
+	fileErrors, crossErrors, err := config.ValidateAll()
 	if err != nil {
 		fmt.Printf("Error reading configuration directory %s: %v\n", configDir, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Validating configurations in %s:\n", configDir)
-	hasError := false
+	// Report each file. ValidateAll only returns entries with problems, so read
+	// the directory to also print the OK ones.
+	files, _ := os.ReadDir(configDir)
+	hasError := len(crossErrors) > 0
 	for _, file := range files {
-		if filepath.Ext(file.Name()) != ".json" {
+		name := file.Name()
+		if file.IsDir() || filepath.Ext(name) != ".json" || name == "conf.global.json" {
 			continue
 		}
-		if file.Name() == "conf.global.json" {
-			continue
-		}
-		fullPath, err := config.SafeJoin(configDir, file.Name())
-		if err != nil {
-			fmt.Printf("- %s: INVALID PATH (%v)\n", file.Name(), err)
+		if problems, bad := fileErrors[name]; bad {
 			hasError = true
-			continue
+			fmt.Printf("- %s: FAILED\n", name)
+			for _, p := range problems {
+				fmt.Printf("    - %s\n", p)
+			}
+		} else {
+			fmt.Printf("- %s: OK\n", name)
 		}
-		conf, err := config.LoadConfig(fullPath)
-		if err != nil {
-			fmt.Printf("- %s: FAILED (%v)\n", file.Name(), err)
-			hasError = true
-			continue
-		}
-		fmt.Printf("- %s: OK\n", conf.Domain)
+	}
+
+	for _, c := range crossErrors {
+		fmt.Printf("! %s\n", c)
 	}
 
 	if hasError {

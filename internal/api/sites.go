@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mirkobrombin/goup/internal/config"
@@ -134,26 +132,7 @@ func validateSiteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Site not found", http.StatusNotFound)
 		return
 	}
-	var errs []string
-	if site.SSL.Enabled {
-		if exists, invalid := checkConfiguredPath(site.SSL.Certificate); invalid {
-			errs = append(errs, "SSL certificate path is invalid (must be an absolute path without '..')")
-		} else if !exists {
-			errs = append(errs, "SSL certificate not found")
-		}
-		if exists, invalid := checkConfiguredPath(site.SSL.Key); invalid {
-			errs = append(errs, "SSL key path is invalid (must be an absolute path without '..')")
-		} else if !exists {
-			errs = append(errs, "SSL key not found")
-		}
-	}
-	if site.RootDirectory != "" {
-		if exists, invalid := checkConfiguredPath(site.RootDirectory); invalid {
-			errs = append(errs, "Root directory path is invalid (must be an absolute path without '..')")
-		} else if !exists {
-			errs = append(errs, "Root directory does not exist")
-		}
-	}
+	errs := site.Validate()
 	if len(errs) > 0 {
 		jsonResponse(w, map[string]any{
 			"valid":  false,
@@ -162,22 +141,4 @@ func validateSiteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]any{"valid": true})
-}
-
-// checkConfiguredPath validates an operator-supplied filesystem path (SSL
-// certificate, key, or root directory) and reports whether it exists. It
-// rejects relative paths and any path containing a ".." traversal segment
-// before touching the filesystem, so request-derived data is sanitised before
-// it reaches os.Stat. Returns invalid=true when the path fails validation.
-func checkConfiguredPath(p string) (exists bool, invalid bool) {
-	if p == "" {
-		return false, false
-	}
-	if strings.Contains(p, "..") || !filepath.IsAbs(p) {
-		return false, true
-	}
-	if _, err := os.Stat(p); err == nil {
-		return true, false
-	}
-	return false, false
 }
