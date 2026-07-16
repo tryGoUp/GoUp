@@ -45,6 +45,15 @@ func StartServers(configs []config.SiteConfig, enableTUI bool, enableBench bool,
 	// Initialize the global async logger
 	middleware.InitAsyncLogger(10000)
 
+	// Start the log retention sweeper (no-op when not configured).
+	config.GlobalConfMu.RLock()
+	retention := 0
+	if config.GlobalConf != nil {
+		retention = config.GlobalConf.LogRetentionDays
+	}
+	config.GlobalConfMu.RUnlock()
+	logger.StartRetention(retention)
+
 	var wg sync.WaitGroup
 
 	// Start DNS Server if requested (and available)

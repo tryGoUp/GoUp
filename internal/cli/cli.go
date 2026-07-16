@@ -12,6 +12,7 @@ import (
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/pidfile"
 	"github.com/mirkobrombin/goup/internal/plugin"
+	"github.com/mirkobrombin/goup/internal/restart"
 	"github.com/mirkobrombin/goup/internal/server"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
@@ -281,6 +282,17 @@ func handleShutdownSignal() {
 		}
 		pidfile.Remove()
 		os.Exit(0)
+	}()
+
+	// SIGHUP reloads configuration: gracefully drain and re-exec, so config and
+	// certificate changes are picked up without a manual stop/start.
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+	go func() {
+		for range hupCh {
+			fmt.Println("\nReloading configuration (SIGHUP)...")
+			restart.Restart()
+		}
 	}()
 }
 
