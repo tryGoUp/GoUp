@@ -137,12 +137,23 @@ func LoadAllConfigs() ([]SiteConfig, error) {
 	var wg sync.WaitGroup
 
 	for _, file := range files {
+		// Skip the global config file: it lives in the same directory but is
+		// not a site definition (loading it would create a phantom site with an
+		// empty domain on port 0).
+		if file.Name() == globalConfName {
+			continue
+		}
 		if filepath.Ext(file.Name()) == ".json" {
 			wg.Add(1)
 			go func(fname string) {
 				defer wg.Done()
 
-				conf, err := LoadConfig(filepath.Join(configDir, fname))
+				fullPath, err := SafeJoin(configDir, fname)
+				if err != nil {
+					fmt.Printf("Error loading config %s: %v\n", fname, err)
+					return
+				}
+				conf, err := LoadConfig(fullPath)
 				if err != nil {
 					fmt.Printf("Error loading config %s: %v\n", fname, err)
 					return
@@ -168,7 +179,7 @@ func (conf *SiteConfig) Save(filePath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, data, 0644)
+	return os.WriteFile(filePath, data, 0600)
 }
 
 // GetSiteConfigByHost returns the site configuration based on the host.

@@ -31,30 +31,6 @@ var gzipWriterPool = sync.Pool{
 	},
 }
 
-type gzipResponseWriter struct {
-	io.Writer
-	http.ResponseWriter
-	wroteHeader bool
-}
-
-func (w *gzipResponseWriter) WriteHeader(status int) {
-	if w.wroteHeader {
-		return
-	}
-	w.wroteHeader = true
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	if !w.wroteHeader {
-		if w.Header().Get("Content-Type") == "" {
-			w.Header().Set("Content-Type", http.DetectContentType(b))
-		}
-		w.WriteHeader(http.StatusOK)
-	}
-	return w.Writer.Write(b)
-}
-
 // GzipMiddleware compresses the response if the client supports it and the content is compressible.
 // Critical: It skips compression if "Content-Encoding" is already set (e.g. by Smart Static Handler serving .gz).
 func GzipMiddleware(next http.Handler) http.Handler {
@@ -103,8 +79,23 @@ func (w *smartGzipWriter) WriteHeader(status int) {
 		w.Header().Del("Content-Length")
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Vary", "Accept-Encoding")
+		// The compressed body is a different representation than the identity
+		// one, so it must not share the same strong ETag (that would let a
+		// cache serve gzip bytes as identity or vice versa). Mark it weak and
+		// distinct.
+		if et := w.Header().Get("ETag"); et != "" {
+			w.Header().Set("ETag", weakGzipETag(et))
+		}
 	}
 	w.ResponseWriter.WriteHeader(status)
+}
+
+// weakGzipETag turns an ETag into a weak validator distinct from the identity
+// representation's tag.
+func weakGzipETag(et string) string {
+	trimmed := strings.TrimPrefix(et, "W/")
+	trimmed = strings.Trim(trimmed, "\"")
+	return "W/\"" + trimmed + "-gzip\""
 }
 
 func (w *smartGzipWriter) Write(b []byte) (int, error) {
@@ -128,6 +119,14 @@ func (w *smartGzipWriter) checkCompression() {
 	w.checked = true
 
 	if w.Header().Get("Content-Encoding") != "" {
+		w.shouldCompress = false
+		return
+	}
+
+	// Do not compress range responses: http.ServeContent emits 206 with
+	// identity byte offsets, and wrapping that in gzip produces a spec-invalid,
+	// corrupt response.
+	if w.req != nil && w.req.Header.Get("Range") != "" {
 		w.shouldCompress = false
 		return
 	}

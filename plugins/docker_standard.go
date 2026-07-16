@@ -97,8 +97,13 @@ func (d *DockerStandardPlugin) OnInitForSite(conf config.SiteConfig, domainLogge
 	d.states[conf.Domain] = &dockerStandardState{config: cfg}
 	d.DomainLogger.Infof("[DockerStandardPlugin] Initialized for domain=%s with config=%+v", conf.Domain, cfg)
 
-	if err := d.ensureContainer(conf.Domain); err != nil {
-		d.DomainLogger.Warnf("Container not started for domain %s: %v", conf.Domain, err)
+	// Only pull/build and start a container when the plugin is actually enabled
+	// for this site. Otherwise a disabled (or absent) config would still shell
+	// out to docker/podman on every site during startup.
+	if cfg.Enable {
+		if err := d.ensureContainer(conf.Domain); err != nil {
+			d.DomainLogger.Warnf("Container not started for domain %s: %v", conf.Domain, err)
+		}
 	}
 	return nil
 }
@@ -110,24 +115,39 @@ func (d *DockerStandardPlugin) HandleRequest(w http.ResponseWriter, r *http.Requ
 	if idx := strings.Index(host, ":"); idx != -1 {
 		host = host[:idx]
 	}
+	d.mu.Lock()
 	state, ok := d.states[host]
 	if !ok || !state.config.Enable {
+		d.mu.Unlock()
 		return false
 	}
-	if state.containerID == "" {
+	started := state.containerID != ""
+	proxyPaths := state.config.ProxyPaths
+	d.mu.Unlock()
+
+	if !started {
 		if err := d.ensureContainer(host); err != nil {
 			d.PluginLogger.Errorf("Failed to start container: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to start container: %v", err), http.StatusInternalServerError)
 			return false
 		}
 	}
-	// Build target URL using the assigned host port.
-	targetURL := fmt.Sprintf("http://0.0.0.0:%s", state.hostPort)
 
-	if len(state.config.ProxyPaths) == 1 && state.config.ProxyPaths[0] == "/" {
+	// Read the assigned host port under the lock, since ensureContainer writes
+	// it concurrently with other in-flight requests.
+	d.mu.Lock()
+	hostPort := state.hostPort
+	d.mu.Unlock()
+	if hostPort == "" {
+		http.Error(w, "Container port not available", http.StatusBadGateway)
+		return true
+	}
+	targetURL := fmt.Sprintf("http://127.0.0.1:%s", hostPort)
+
+	if len(proxyPaths) == 1 && proxyPaths[0] == "/" {
 		return d.proxyToContainer(targetURL, w, r)
 	}
-	for _, prefix := range state.config.ProxyPaths {
+	for _, prefix := range proxyPaths {
 		if strings.HasPrefix(r.URL.Path, prefix) {
 			return d.proxyToContainer(targetURL, w, r)
 		}

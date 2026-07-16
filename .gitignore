@@ -1,6 +1,12 @@
 private.key
 certificate.crt
 test.sh
+
+# Local build artifacts
+/goup
+/goup-dev
+/goup-web
+/goup-dns
 public/node_test/app/node_modules
 public/node_test/app/pnpm-lock.yaml
 public/**/*.pyc

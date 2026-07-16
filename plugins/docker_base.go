@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
@@ -30,11 +29,12 @@ type DockerBaseConfig struct {
 	CLICommand     string `json:"cli_command"`
 }
 
-// DockerBasePlugin provides common Docker functionality.
+// DockerBasePlugin provides common Docker functionality. siteConfigs is
+// populated serially during startup and only read while serving, so no lock is
+// required.
 type DockerBasePlugin struct {
 	plugin.BasePlugin
-	mu     sync.Mutex
-	Config DockerBaseConfig
+	siteConfigs map[string]DockerBaseConfig
 }
 
 func (d *DockerBasePlugin) Name() string {
@@ -42,6 +42,7 @@ func (d *DockerBasePlugin) Name() string {
 }
 
 func (d *DockerBasePlugin) OnInit() error {
+	d.siteConfigs = make(map[string]DockerBaseConfig)
 	return nil
 }
 
@@ -72,41 +73,43 @@ func (d *DockerBasePlugin) OnInitForSite(conf config.SiteConfig, domainLogger *l
 			}
 		}
 	}
-	d.Config = cfg
 
 	// If the Docker plugin is not enabled (or not configured) for this site,
-	// skip CLI resolution entirely so that a missing docker/podman binary does
-	// not break plugin init on machines that don't need Docker.
-	if !d.Config.Enable {
+	// store the disabled config and skip CLI resolution entirely so that a
+	// missing docker/podman binary does not break plugin init on machines that
+	// don't need Docker.
+	if !cfg.Enable {
+		d.siteConfigs[conf.Domain] = cfg
 		return nil
 	}
 
 	// Determine CLICommand if not set.
-	if d.Config.CLICommand == "" {
+	if cfg.CLICommand == "" {
 		if _, err := exec.LookPath("docker"); err == nil {
-			d.Config.CLICommand = "docker"
+			cfg.CLICommand = "docker"
 		} else if _, err := exec.LookPath("podman"); err == nil {
-			d.Config.CLICommand = "podman"
+			cfg.CLICommand = "podman"
 		} else {
 			return fmt.Errorf("neither 'docker' nor 'podman' found in PATH")
 		}
 	}
 
 	// Set default SocketPath.
-	if runtime.GOOS != "windows" && strings.ToLower(d.Config.CLICommand) == "podman" && d.Config.SocketPath == "" {
+	if runtime.GOOS != "windows" && strings.ToLower(cfg.CLICommand) == "podman" && cfg.SocketPath == "" {
 		userSocket := fmt.Sprintf("/run/user/%d/podman/podman.sock", os.Getuid())
 		if _, err := os.Stat(userSocket); err == nil {
-			d.Config.SocketPath = userSocket
+			cfg.SocketPath = userSocket
 		} else {
-			d.Config.SocketPath = "/run/podman/podman.sock"
+			cfg.SocketPath = "/run/podman/podman.sock"
 		}
 	}
-	if runtime.GOOS != "windows" && d.Config.SocketPath == "" {
-		d.Config.SocketPath = "/var/run/docker.sock"
+	if runtime.GOOS != "windows" && cfg.SocketPath == "" {
+		cfg.SocketPath = "/var/run/docker.sock"
 	}
 
+	d.siteConfigs[conf.Domain] = cfg
 	d.DomainLogger.Infof("[DockerBasePlugin] Initialized for domain=%s, mode=%s, CLICommand=%s, SocketPath=%s",
-		conf.Domain, d.Config.Mode, d.Config.CLICommand, d.Config.SocketPath)
+		conf.Domain, cfg.Mode, cfg.CLICommand, cfg.SocketPath)
 	return nil
 }
 
@@ -116,7 +119,20 @@ func (d *DockerBasePlugin) HandleRequest(w http.ResponseWriter, r *http.Request)
 	if !strings.HasPrefix(r.URL.Path, "/docker/") {
 		return false
 	}
-	output, err := d.ListContainers()
+
+	// Gate the container-listing endpoint behind the site's own configuration:
+	// it must be explicitly enabled for the requested host, otherwise the
+	// Docker inventory would be exposed on every site.
+	host := r.Host
+	if idx := strings.Index(host, ":"); idx != -1 {
+		host = host[:idx]
+	}
+	cfg, ok := d.siteConfigs[host]
+	if !ok || !cfg.Enable {
+		return false
+	}
+
+	output, err := d.listContainers(cfg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error listing containers: %v", err), http.StatusInternalServerError)
 		return true
@@ -132,25 +148,25 @@ func (d *DockerBasePlugin) OnExit() error {
 	return nil
 }
 
-// ListContainers lists containers via Docker API; falls back to CLI if needed.
-func (d *DockerBasePlugin) ListContainers() (string, error) {
-	res, err := d.callDockerAPI("GET", "/containers/json", nil)
+// listContainers lists containers via Docker API; falls back to CLI if needed.
+func (d *DockerBasePlugin) listContainers(cfg DockerBaseConfig) (string, error) {
+	res, err := d.callDockerAPI(cfg, "GET", "/containers/json", nil)
 	if err == nil {
 		return res, nil
 	}
 	// CLI fallback.
-	if strings.ToLower(d.Config.CLICommand) == "podman" {
-		return RunDockerCLI(d.Config.CLICommand, d.Config.DockerfilePath, "ps", "--format", "json")
+	if strings.ToLower(cfg.CLICommand) == "podman" {
+		return RunDockerCLI(cfg.CLICommand, cfg.DockerfilePath, "ps", "--format", "json")
 	}
-	return RunDockerCLI(d.Config.CLICommand, d.Config.DockerfilePath, "ps", "--format", "{{json .}}")
+	return RunDockerCLI(cfg.CLICommand, cfg.DockerfilePath, "ps", "--format", "{{json .}}")
 }
 
-func (d *DockerBasePlugin) callDockerAPI(method, path string, body []byte) (string, error) {
+func (d *DockerBasePlugin) callDockerAPI(cfg DockerBaseConfig, method, path string, body []byte) (string, error) {
 	d.DomainLogger.Infof("[DockerBasePlugin] Calling Docker API: %s %s", method, path)
 	if runtime.GOOS == "windows" {
 		return "", fmt.Errorf("docker API over Unix socket is not supported on Windows")
 	}
-	socket := d.Config.SocketPath
+	socket := cfg.SocketPath
 	if socket == "" {
 		socket = "/var/run/docker.sock"
 	}
@@ -159,6 +175,7 @@ func (d *DockerBasePlugin) callDockerAPI(method, path string, body []byte) (stri
 			return net.Dial("unix", socket)
 		},
 	}
+	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 	urlStr := "http://unix" + path
 	req, err := http.NewRequest(method, urlStr, bytes.NewReader(body))

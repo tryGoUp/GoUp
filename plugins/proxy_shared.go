@@ -26,6 +26,9 @@ var upstreamTransport = &http.Transport{
 	IdleConnTimeout:       90 * time.Second,
 	TLSHandshakeTimeout:   10 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
+	// Bound the wait for a backend's response headers so a hung app process
+	// (Node, Python, Docker container) cannot hold the proxy goroutine open.
+	ResponseHeaderTimeout: 60 * time.Second,
 }
 
 var upstreamProxies sync.Map // target URL -> *httputil.ReverseProxy

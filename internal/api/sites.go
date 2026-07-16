@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/gorilla/mux"
@@ -48,7 +47,11 @@ func createSiteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	path := filepath.Join(config.GetConfigDir(), site.Domain+".json")
+	path, err := config.SiteConfigPath(site.Domain)
+	if err != nil {
+		http.Error(w, "Invalid domain", http.StatusBadRequest)
+		return
+	}
 	if _, err := os.Stat(path); err == nil {
 		http.Error(w, "Site already exists", http.StatusBadRequest)
 		return
@@ -86,7 +89,11 @@ func updateSiteHandler(w http.ResponseWriter, r *http.Request) {
 	existing.RequestTimeout = updated.RequestTimeout
 	existing.PluginConfigs = updated.PluginConfigs
 
-	path := filepath.Join(config.GetConfigDir(), domain+".json")
+	path, err := config.SiteConfigPath(domain)
+	if err != nil {
+		http.Error(w, "Invalid domain", http.StatusBadRequest)
+		return
+	}
 	if err := existing.Save(path); err != nil {
 		http.Error(w, "Failed to save site config", http.StatusInternalServerError)
 		return
@@ -100,7 +107,11 @@ func updateSiteHandler(w http.ResponseWriter, r *http.Request) {
 func deleteSiteHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	domain := vars["domain"]
-	path := filepath.Join(config.GetConfigDir(), domain+".json")
+	path, err := config.SiteConfigPath(domain)
+	if err != nil {
+		http.Error(w, "Invalid domain", http.StatusBadRequest)
+		return
+	}
 	if err := os.Remove(path); err != nil {
 		http.Error(w, "Failed to delete site config", http.StatusInternalServerError)
 		return

@@ -17,6 +17,16 @@ func StartDashboardServer() *http.Server {
 	if conf == nil || conf.DashboardPort == 0 {
 		return nil
 	}
+
+	// Fail closed: the dashboard proxies the admin API (and injects its token).
+	// Refuse to start without Basic Auth credentials rather than exposing it
+	// unauthenticated on the network.
+	if conf.Account.Username == "" || conf.Account.PasswordHash == "" {
+		fmt.Println("[Dashboard] Refusing to start: 'account.username' and " +
+			"'account.password_hash' must be set to secure the dashboard.")
+		return nil
+	}
+
 	port := conf.DashboardPort
 	handler := Handler()
 	handler = middleware.BasicAuthMiddleware(handler)

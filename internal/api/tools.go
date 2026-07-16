@@ -46,7 +46,7 @@ func cleanupLogsHandler(w http.ResponseWriter, r *http.Request) {
 	zipWriter.Close()
 
 	backupFile := filepath.Join(logDir, "logs_backup_"+time.Now().Format("20060102_150405")+".zip")
-	err = os.WriteFile(backupFile, zipBuffer.Bytes(), 0644)
+	err = os.WriteFile(backupFile, zipBuffer.Bytes(), 0600)
 	if err != nil {
 		http.Error(w, "Error saving backup zip", http.StatusInternalServerError)
 		return

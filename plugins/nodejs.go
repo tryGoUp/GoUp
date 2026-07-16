@@ -30,7 +30,7 @@ type NodeJSPlugin struct {
 	plugin.BasePlugin
 
 	mu          sync.Mutex
-	process     *os.Process
+	processes   map[string]*os.Process // per-domain Node.js process
 	siteConfigs map[string]NodeJSPluginConfig
 }
 
@@ -40,6 +40,7 @@ func (p *NodeJSPlugin) Name() string {
 
 func (p *NodeJSPlugin) OnInit() error {
 	p.siteConfigs = make(map[string]NodeJSPluginConfig)
+	p.processes = make(map[string]*os.Process)
 	return nil
 }
 
@@ -102,7 +103,7 @@ func (p *NodeJSPlugin) HandleRequest(w http.ResponseWriter, r *http.Request) boo
 	}
 
 	// Ensure Node.js is running if needed.
-	p.ensureNodeServerRunning(cfg)
+	p.ensureNodeServerRunning(host, cfg)
 
 	// Check if path matches one of the ProxyPaths.
 	for _, proxyPath := range cfg.ProxyPaths {
@@ -120,25 +121,28 @@ func (p *NodeJSPlugin) AfterRequest(w http.ResponseWriter, r *http.Request) {}
 func (p *NodeJSPlugin) OnExit() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.process != nil {
-		// Log to the plugin logger only
-		p.PluginLogger.Infof("[NodeJSPlugin] Terminating Node.js process (PID=%d).", p.process.Pid)
-		_ = p.process.Kill()
-		p.process = nil
+	for domain, proc := range p.processes {
+		if proc != nil {
+			// Log to the plugin logger only
+			p.PluginLogger.Infof("[NodeJSPlugin] Terminating Node.js process for domain=%s (PID=%d).", domain, proc.Pid)
+			_ = proc.Kill()
+			p.processes[domain] = nil
+		}
 	}
 	return nil
 }
 
-// ensureNodeServerRunning starts Node.js if it is not already running.
-func (p *NodeJSPlugin) ensureNodeServerRunning(cfg NodeJSPluginConfig) {
+// ensureNodeServerRunning starts a Node.js process for the given domain if one
+// is not already running.
+func (p *NodeJSPlugin) ensureNodeServerRunning(domain string, cfg NodeJSPluginConfig) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.process != nil {
+	if p.processes[domain] != nil {
 		return
 	}
 
-	p.PluginLogger.Infof("Starting Node.js server...")
+	p.PluginLogger.Infof("Starting Node.js server for domain=%s...", domain)
 
 	// Install dependencies if required.
 	if cfg.InstallDeps {
@@ -157,23 +161,24 @@ func (p *NodeJSPlugin) ensureNodeServerRunning(cfg NodeJSPluginConfig) {
 	cmd.Stderr = p.PluginLogger.Writer()
 
 	if err := cmd.Start(); err != nil {
-		p.PluginLogger.Errorf("Failed to start Node.js server: %v", err)
+		p.PluginLogger.Errorf("Failed to start Node.js server for domain=%s: %v", domain, err)
 		return
 	}
 
-	p.process = cmd.Process
-	p.PluginLogger.Infof("Started Node.js server (PID=%d) on port %s", p.process.Pid, cfg.Port)
+	p.processes[domain] = cmd.Process
+	p.PluginLogger.Infof("Started Node.js server for domain=%s (PID=%d) on port %s", domain, cmd.Process.Pid, cfg.Port)
 
-	// Watch for process exit.
-	go func() {
-		err := cmd.Wait()
-		p.PluginLogger.Infof("Node.js server exited (PID=%d), err=%v", p.process.Pid, err)
+	// Watch for process exit. Capture cmd so we read its Pid without racing the
+	// map reset below.
+	go func(dom string, c *exec.Cmd) {
+		err := c.Wait()
+		p.PluginLogger.Infof("Node.js server exited for domain=%s (PID=%d), err=%v", dom, c.Process.Pid, err)
 		p.PluginLogger.Writer().Close()
 
 		p.mu.Lock()
-		p.process = nil
+		p.processes[dom] = nil
 		p.mu.Unlock()
-	}()
+	}(domain, cmd)
 }
 
 // proxyToNode forwards the request to Node.js, streaming both bodies through

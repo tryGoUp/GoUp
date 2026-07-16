@@ -1,15 +1,12 @@
 package server
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/mirkobrombin/goup/internal/assets"
@@ -90,7 +87,16 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 			if isBrowser(r) {
 				var items []assets.ListingItem
 				for _, entry := range entries {
-					entryInfo, _ := entry.Info()
+					if isHiddenName(entry.Name()) {
+						continue
+					}
+					entryInfo, err := entry.Info()
+					if err != nil {
+						// The entry vanished between ReadDir and Info (or is
+						// otherwise unreadable); skip it instead of panicking on
+						// a nil FileInfo.
+						continue
+					}
 					items = append(items, assets.ListingItem{
 						Name:    entry.Name(),
 						IsDir:   entry.IsDir(),
@@ -105,6 +111,9 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				w.WriteHeader(http.StatusOK)
 				for _, entry := range entries {
+					if isHiddenName(entry.Name()) {
+						continue
+					}
 					name := entry.Name()
 					if entry.IsDir() {
 						name += "/"
@@ -178,13 +187,6 @@ func ServeStatic(w http.ResponseWriter, r *http.Request, root string) {
 	http.ServeContent(w, r, filepath.Base(fullPath), serveInfo.ModTime(), file)
 }
 
-// Custom ETag calculation (unused in simplified version, but kept for reference)
-func calculateETag(info os.FileInfo) string {
-	hash := sha256.New()
-	hash.Write([]byte(strconv.FormatInt(info.Size(), 10)))
-	hash.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
-	return hex.EncodeToString(hash.Sum(nil))
-}
 func formatSizeBytes(b int64) string {
 	const unit = 1024
 	if b < unit {
@@ -203,6 +205,12 @@ func isBrowser(r *http.Request) bool {
 }
 
 func staticLocalPath(root, urlPath string) (string, string, error) {
+	// An empty root would resolve request paths against the process working
+	// directory, silently exposing whatever GoUp was started from. Refuse it.
+	if root == "" {
+		return "", "", fmt.Errorf("no root directory configured")
+	}
+
 	urlPath = strings.ReplaceAll(urlPath, "\\", "/")
 	cleanPath := path.Clean("/" + strings.TrimPrefix(urlPath, "/"))
 	relPath := strings.TrimPrefix(cleanPath, "/")
@@ -210,9 +218,23 @@ func staticLocalPath(root, urlPath string) (string, string, error) {
 		return cleanPath, root, nil
 	}
 
+	// Do not serve dotfiles/dotdirs (.git, .env, ...) except the well-known
+	// directory used for ACME and similar protocols.
+	for _, seg := range strings.Split(relPath, "/") {
+		if strings.HasPrefix(seg, ".") && seg != ".well-known" {
+			return cleanPath, "", fmt.Errorf("hidden path")
+		}
+	}
+
 	localPath, err := filepath.Localize(relPath)
 	if err != nil {
 		return cleanPath, "", err
 	}
 	return cleanPath, filepath.Join(root, localPath), nil
+}
+
+// isHiddenName reports whether a directory entry should be omitted from
+// listings (dotfiles other than .well-known).
+func isHiddenName(name string) bool {
+	return strings.HasPrefix(name, ".") && name != ".well-known"
 }

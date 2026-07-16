@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -248,5 +249,13 @@ func phpScriptPath(root, cleanPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, localPath), nil
+	joined := filepath.Join(root, localPath)
+
+	// Defense in depth: confirm the resolved path never escapes the document
+	// root, even if Localize behaves unexpectedly on some platform.
+	rel, err := filepath.Rel(root, joined)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes document root")
+	}
+	return joined, nil
 }

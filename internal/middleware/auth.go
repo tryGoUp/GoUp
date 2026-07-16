@@ -16,9 +16,11 @@ func BasicAuthMiddleware(next http.Handler) http.Handler {
 		conf := config.GlobalConf
 		config.GlobalConfMu.RUnlock()
 
-		// If auth is not configured, skip
+		// Fail closed: if credentials are not configured, deny rather than
+		// serving the protected surface unauthenticated.
 		if conf == nil || conf.Account.Username == "" || conf.Account.PasswordHash == "" {
-			next.ServeHTTP(w, r)
+			w.Header().Set("WWW-Authenticate", `Basic realm="GoUp Dashboard"`)
+			http.Error(w, "Unauthorized: authentication is not configured", http.StatusUnauthorized)
 			return
 		}
 
@@ -47,9 +49,10 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 		conf := config.GlobalConf
 		config.GlobalConfMu.RUnlock()
 
-		// If token is not configured, skip
+		// Fail closed: if no token is configured, deny rather than serving the
+		// admin API unauthenticated.
 		if conf == nil || conf.Account.APIToken == "" {
-			next.ServeHTTP(w, r)
+			http.Error(w, "Unauthorized: authentication is not configured", http.StatusUnauthorized)
 			return
 		}
 

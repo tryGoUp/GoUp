@@ -18,6 +18,15 @@ func StartAPIServer() *http.Server {
 		return nil
 	}
 
+	// Fail closed: the API exposes full administrative control (create/delete
+	// sites, rewrite the global config, restart). Refuse to start it without a
+	// token instead of serving an unauthenticated admin surface on the network.
+	if conf.Account.APIToken == "" {
+		fmt.Println("[API] Refusing to start: 'account.api_token' is not set. " +
+			"Set a token in the global config to enable the API.")
+		return nil
+	}
+
 	router := SetupRoutes()
 	port := conf.APIPort
 	var handler http.Handler = router

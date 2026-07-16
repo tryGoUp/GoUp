@@ -13,7 +13,6 @@ import (
 	"github.com/mirkobrombin/goup/internal/assets"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
-	"github.com/mirkobrombin/goup/internal/plugin"
 	"github.com/mirkobrombin/goup/internal/server/middleware"
 )
 
@@ -47,18 +46,6 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	// Copy the global middleware manager for this site
 	siteMwManager := globalMwManager.Copy()
-
-	// Initialize plugins for this site
-	pluginManager := plugin.GetPluginManagerInstance()
-	if err := pluginManager.InitPluginsForSite(conf, log); err != nil {
-		return nil, fmt.Errorf("error initializing plugins for site %s: %v", conf.Domain, err)
-	}
-
-	// Add per-site middleware
-	reqTimeout := conf.RequestTimeout
-	if reqTimeout == 0 {
-		reqTimeout = 60 // Default to 60 seconds
-	}
 
 	// Add Concurrency Middleware
 	if conf.MaxConcurrentConnections > 0 {
@@ -117,19 +104,23 @@ var (
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		// Bound the time spent waiting for a backend to start responding, so a
+		// hung upstream cannot pin a goroutine/connection indefinitely.
+		ResponseHeaderTimeout: 60 * time.Second,
 	}
 
-	globalBytePool = &byteSlicePool{
-		pool: sync.Pool{
-			New: func() any {
-				return make([]byte, 32*1024)
-			},
-		},
-	}
+	globalBytePool = newByteSlicePool(32 * 1024)
 )
 
 type byteSlicePool struct {
 	pool sync.Pool
+	size int
+}
+
+func newByteSlicePool(size int) *byteSlicePool {
+	p := &byteSlicePool{size: size}
+	p.pool.New = func() any { return make([]byte, size) }
+	return p
 }
 
 func (b *byteSlicePool) Get() []byte {
@@ -137,8 +128,11 @@ func (b *byteSlicePool) Get() []byte {
 }
 
 func (b *byteSlicePool) Put(buf []byte) {
-	if cap(buf) == 32*1024 {
-		b.pool.Put(buf[:32*1024])
+	// Recycle only buffers that match this pool's size, so a per-site pool with
+	// a custom buffer_size_kb actually reuses its buffers instead of allocating
+	// a fresh one on every request.
+	if cap(buf) >= b.size {
+		b.pool.Put(buf[:b.size])
 	}
 }
 
@@ -176,13 +170,7 @@ func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputi
 
 	// Set BufferPool with custom size if specified
 	if conf.BufferSizeKB > 0 {
-		rp.BufferPool = &byteSlicePool{
-			pool: sync.Pool{
-				New: func() any {
-					return make([]byte, conf.BufferSizeKB*1024)
-				},
-			},
-		}
+		rp.BufferPool = newByteSlicePool(conf.BufferSizeKB * 1024)
 	} else {
 		rp.BufferPool = globalBytePool
 	}
