@@ -25,7 +25,9 @@ type GlobalConfig struct {
 	Account        AccountConfig   `json:"account"`
 	EnableAPI      bool            `json:"enable_api"`
 	APIPort        int             `json:"api_port"`
+	APIBind        string          `json:"api_bind"` // bind address for the API (empty = all interfaces)
 	DashboardPort  int             `json:"dashboard_port"`
+	DashboardBind  string          `json:"dashboard_bind"`  // bind address for the dashboard (empty = all interfaces)
 	EnabledPlugins []string        `json:"enabled_plugins"` // empty means all enabled
 	SafeGuard      SafeGuardConfig `json:"safeguard"`
 	DNS            *DNSConfig      `json:"dns"`

@@ -188,7 +188,15 @@ func (d *DockerBasePlugin) callDockerAPI(cfg DockerBaseConfig, method, path stri
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
-	return string(data), err
+	if err != nil {
+		return "", err
+	}
+	// Treat HTTP error responses as failures so listContainers falls back to the
+	// CLI instead of surfacing an error body as if it were the container list.
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("docker API %s %s returned status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return string(data), nil
 }
 
 // RunDockerCLI executes a Docker/Podman CLI command.

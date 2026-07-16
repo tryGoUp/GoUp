@@ -173,7 +173,6 @@ func (p *NodeJSPlugin) ensureNodeServerRunning(domain string, cfg NodeJSPluginCo
 	go func(dom string, c *exec.Cmd) {
 		err := c.Wait()
 		p.PluginLogger.Infof("Node.js server exited for domain=%s (PID=%d), err=%v", dom, c.Process.Pid, err)
-		p.PluginLogger.Writer().Close()
 
 		p.mu.Lock()
 		p.processes[dom] = nil

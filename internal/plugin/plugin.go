@@ -116,6 +116,22 @@ func (pm *PluginManager) InitPluginsForSite(conf config.SiteConfig, l *logger.Lo
 	return nil
 }
 
+// ExitPlugins calls OnExit on all registered plugins. It is invoked during
+// graceful shutdown and before a restart re-execs the process, so plugins that
+// spawn child processes (Node.js, Python, Docker) can terminate them instead of
+// leaving orphans holding their ports.
+func (pm *PluginManager) ExitPlugins() {
+	var plugins []Plugin
+	if snap := pm.snapshot.Load(); snap != nil {
+		plugins = *snap
+	}
+	for _, p := range plugins {
+		if err := p.OnExit(); err != nil {
+			fmt.Printf("Plugin %s OnExit error: %v\n", p.Name(), err)
+		}
+	}
+}
+
 // GetRegisteredPlugins returns the names of all registered plugins.
 func (pm *PluginManager) GetRegisteredPlugins() []string {
 	pm.mu.Lock()

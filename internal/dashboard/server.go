@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/middleware"
@@ -32,8 +33,13 @@ func StartDashboardServer() *http.Server {
 	handler = middleware.BasicAuthMiddleware(handler)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf("%s:%d", conf.DashboardBind, port),
 		Handler: handler,
+		// Timeouts guard the (pre-auth) admin surface against slowloris.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
