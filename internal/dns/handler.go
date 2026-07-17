@@ -271,7 +271,20 @@ func (h *DNSHandler) handleForwarding(w dns.ResponseWriter, r *dns.Msg) {
 		resp, _, err := h.client.Exchange(r, target)
 		if err == nil {
 			resp.Authoritative = false
-			w.WriteMsg(resp)
+			// Truncate to the client's UDP buffer and set the TC bit so it
+			// retries over TCP instead of receiving an oversized datagram.
+			if _, isUDP := w.RemoteAddr().(*net.UDPAddr); isUDP {
+				maxSize := dns.MinMsgSize
+				if opt := r.IsEdns0(); opt != nil {
+					if sz := int(opt.UDPSize()); sz > maxSize {
+						maxSize = sz
+					}
+				}
+				resp.Truncate(maxSize)
+			}
+			if err := w.WriteMsg(resp); err != nil {
+				h.Logger.Errorf("Failed to write forwarded DNS response: %v", err)
+			}
 			return
 		}
 		h.Logger.Errorf("Upstream query error to %s: %v", target, err)

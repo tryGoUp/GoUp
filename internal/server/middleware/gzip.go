@@ -45,6 +45,15 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// A previous gzip response advertised a weak "...-gzip" ETag. Strip that
+		// suffix from the inbound If-None-Match so http.ServeContent can match it
+		// against the handler's identity ETag and return 304 instead of a full
+		// re-compressed 200. Without this, revalidation of on-the-fly gzipped
+		// content never hits.
+		if inm := r.Header.Get("If-None-Match"); strings.Contains(inm, "-gzip\"") {
+			r.Header.Set("If-None-Match", strings.ReplaceAll(inm, "-gzip\"", "\""))
+		}
+
 		// Optimized Wrapper
 		gw := &smartGzipWriter{
 			ResponseWriter: w,

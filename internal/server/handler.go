@@ -24,7 +24,18 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 	// header names on every request.
 	exposeHeaders := joinHeaderNames(conf.CustomHeaders)
 
-	if conf.ProxyPass != "" {
+	if len(conf.ProxyUpstreams) > 0 {
+		// Load-balance across multiple upstreams with passive health checks.
+		lb, err := newLoadBalancer(conf.ProxyUpstreams, log)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy_upstreams: %v", err)
+		}
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
+			lb.ServeHTTP(w, r)
+		})
+
+	} else if conf.ProxyPass != "" {
 		// Set up reverse proxy handler if ProxyPass is set.
 		proxy, err := getSharedReverseProxy(conf, log)
 		if err != nil {
@@ -38,8 +49,12 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	} else {
 		// Static File Handler with custom design and directory listing
+		cacheControl := conf.CacheControl
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			addCustomHeaders(w, conf.CustomHeaders, exposeHeaders)
+			if cacheControl != "" {
+				w.Header().Set("Cache-Control", cacheControl)
+			}
 			ServeStatic(w, r, conf.RootDirectory)
 		})
 	}
@@ -64,6 +79,30 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	// Apply the final chain of middleware
 	handler = siteMwManager.Apply(handler)
+
+	// Edge middleware wraps the entire chain (outermost first). Applied in
+	// reverse so ForceHTTPS ends up outermost, then IP filtering, rate limiting,
+	// body limit, CORS, and finally security headers closest to the site chain.
+	if conf.SecurityHeaders || conf.HSTS {
+		handler = middleware.SecurityHeadersMiddleware(conf.HSTS, conf.HSTSMaxAge, conf.SecurityHeaders)(handler)
+	}
+	if conf.CORS != nil {
+		handler = middleware.CORSMiddleware(conf.CORS)(handler)
+	}
+	// Body limit is opt-in: a global default would break large uploads streamed
+	// to proxied/plugin backends. Enforce only when the site configures it.
+	if conf.MaxBodyBytes > 0 {
+		handler = middleware.BodyLimitMiddleware(conf.MaxBodyBytes)(handler)
+	}
+	if conf.RateLimitRPS > 0 {
+		handler = middleware.RateLimitMiddleware(conf.RateLimitRPS, conf.RateLimitBurst)(handler)
+	}
+	if len(conf.AllowIPs) > 0 || len(conf.DenyIPs) > 0 {
+		handler = middleware.IPFilterMiddleware(conf.AllowIPs, conf.DenyIPs)(handler)
+	}
+	if conf.ForceHTTPS {
+		handler = middleware.ForceHTTPSMiddleware()(handler)
+	}
 
 	return handler, nil
 }
@@ -132,6 +171,7 @@ func (b *byteSlicePool) Put(buf []byte) {
 	// a custom buffer_size_kb actually reuses its buffers instead of allocating
 	// a fresh one on every request.
 	if cap(buf) >= b.size {
+		//lint:ignore SA6002 httputil.BufferPool mandates a []byte pool.
 		b.pool.Put(buf[:b.size])
 	}
 }

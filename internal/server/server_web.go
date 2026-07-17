@@ -94,9 +94,11 @@ func launchWebComponents(configs []config.SiteConfig, enableTUI bool, enableBenc
 		}
 	}
 
-	// Make restart drain every registered server, and let SafeGuard watch
-	// memory once everything is wired up.
+	// Make restart drain every registered server, terminate plugin child
+	// processes on the force-restart path, and let SafeGuard watch memory once
+	// everything is wired up.
 	restart.SetShutdownFunc(ShutdownServers)
+	restart.SetExitFunc(pluginManager.ExitPlugins)
 	safeguard.Start()
 
 	// Start servers

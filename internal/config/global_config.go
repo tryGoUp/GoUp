@@ -22,13 +22,16 @@ type AccountConfig struct {
 
 // GlobalConfig contains the global settings for GoUP.
 type GlobalConfig struct {
-	Account        AccountConfig   `json:"account"`
-	EnableAPI      bool            `json:"enable_api"`
-	APIPort        int             `json:"api_port"`
-	DashboardPort  int             `json:"dashboard_port"`
-	EnabledPlugins []string        `json:"enabled_plugins"` // empty means all enabled
-	SafeGuard      SafeGuardConfig `json:"safeguard"`
-	DNS            *DNSConfig      `json:"dns"`
+	Account          AccountConfig   `json:"account"`
+	EnableAPI        bool            `json:"enable_api"`
+	APIPort          int             `json:"api_port"`
+	APIBind          string          `json:"api_bind"` // bind address for the API (empty = all interfaces)
+	DashboardPort    int             `json:"dashboard_port"`
+	DashboardBind    string          `json:"dashboard_bind"`  // bind address for the dashboard (empty = all interfaces)
+	EnabledPlugins   []string        `json:"enabled_plugins"` // empty means all enabled
+	SafeGuard        SafeGuardConfig `json:"safeguard"`
+	DNS              *DNSConfig      `json:"dns"`
+	LogRetentionDays int             `json:"log_retention_days"` // delete logs older than N days (0 = keep forever)
 }
 
 // GlobalConf is the global configuration in memory.

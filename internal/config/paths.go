@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -49,6 +50,24 @@ func SiteConfigPath(domain string) (string, error) {
 		return "", err
 	}
 	return SafeJoin(GetConfigDir(), domain+".json")
+}
+
+// CheckPath validates an operator-supplied filesystem path and reports whether
+// it exists. It rejects relative paths and any path containing a ".." traversal
+// segment before touching the filesystem, so request- or config-derived data is
+// sanitised before it reaches os.Stat. invalid is true when the path fails
+// validation (as opposed to simply not existing).
+func CheckPath(p string) (exists bool, invalid bool) {
+	if p == "" {
+		return false, false
+	}
+	if strings.Contains(p, "..") || !filepath.IsAbs(p) {
+		return false, true
+	}
+	if _, err := os.Stat(p); err == nil {
+		return true, false
+	}
+	return false, false
 }
 
 // SafeJoin joins base with an untrusted relative path and verifies that the

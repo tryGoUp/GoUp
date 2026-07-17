@@ -218,7 +218,6 @@ func (p *PythonPlugin) ensurePythonProcess(domain string) {
 	go func(dom string, c *exec.Cmd) {
 		err := c.Wait()
 		p.PluginLogger.Infof("Python server exited for domain '%s' (PID=%d), err=%v", dom, c.Process.Pid, err)
-		p.PluginLogger.Writer().Close()
 		p.mu.Lock()
 		st.process = nil
 		p.mu.Unlock()

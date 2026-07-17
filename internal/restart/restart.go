@@ -16,6 +16,15 @@ var srv *http.Server
 // single-server srv, which only ever tracked the last-registered instance.
 var shutdownFn func(time.Duration) error
 
+// exitFn, when set, terminates plugin-spawned child processes. It is used on
+// the non-graceful ForceRestart path (SafeGuard), since that skips shutdownFn.
+var exitFn func()
+
+// SetExitFunc registers a routine that terminates plugin child processes.
+func SetExitFunc(fn func()) {
+	exitFn = fn
+}
+
 // SetServer sets the server instance to be restarted.
 func SetServer(s *http.Server) {
 	srv = s
@@ -68,6 +77,9 @@ func RestartServer() {
 
 // ForceRestart restarts the server immediately without waiting for graceful shutdown.
 func ForceRestart() {
+	if exitFn != nil {
+		exitFn()
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		log.Fatalf("Failed to get executable: %v", err)

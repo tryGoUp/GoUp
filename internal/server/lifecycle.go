@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mirkobrombin/goup/internal/plugin"
 )
 
 const DefaultShutdownTimeout = 10 * time.Second
@@ -106,6 +108,10 @@ func ShutdownServers(timeout time.Duration) error {
 
 	wg.Wait()
 	close(errs)
+
+	// Terminate plugin-spawned child processes (Node.js, Python, Docker) so
+	// they do not outlive the server as orphans holding their ports.
+	plugin.GetPluginManagerInstance().ExitPlugins()
 
 	var shutdownErr error
 	for err := range errs {

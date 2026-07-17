@@ -23,6 +23,11 @@ type SSLConfig struct {
 	Enabled     bool   `json:"enabled"`
 	Certificate string `json:"certificate"`
 	Key         string `json:"key"`
+	// ACME enables automatic TLS via Let's Encrypt (TLS-ALPN-01 on :443).
+	// When set, Certificate/Key are ignored for this site.
+	ACME     bool   `json:"acme"`
+	Email    string `json:"email"`     // ACME account email (recommended)
+	CacheDir string `json:"cache_dir"` // where issued certificates are cached
 }
 
 // SiteConfig contains the configuration for a single site.
@@ -32,6 +37,7 @@ type SiteConfig struct {
 	RootDirectory            string            `json:"root_directory"`
 	CustomHeaders            map[string]string `json:"custom_headers"`
 	ProxyPass                string            `json:"proxy_pass"`
+	ProxyUpstreams           []string          `json:"proxy_upstreams"` // load-balance across these backends
 	SSL                      SSLConfig         `json:"ssl"`
 	RequestTimeout           int               `json:"request_timeout"`     // in seconds
 	ReadHeaderTimeout        int               `json:"read_header_timeout"` // in seconds
@@ -43,7 +49,29 @@ type SiteConfig struct {
 	EnableLogging            *bool             `json:"enable_logging,omitempty"` // Default true if nil
 	FileServerMode           bool              `json:"file_server_mode"`         // Disables custom pages, enables directory listing
 
+	// Edge hardening and HTTP feature knobs.
+	MaxBodyBytes    int64       `json:"max_body_bytes"`   // 0 = default (10MB), -1 = unlimited
+	ForceHTTPS      bool        `json:"force_https"`      // redirect plain HTTP to HTTPS
+	HSTS            bool        `json:"hsts"`             // send Strict-Transport-Security when served over TLS
+	HSTSMaxAge      int         `json:"hsts_max_age"`     // seconds (default 31536000)
+	SecurityHeaders bool        `json:"security_headers"` // X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+	CacheControl    string      `json:"cache_control"`    // Cache-Control value applied to static responses
+	AllowIPs        []string    `json:"allow_ips"`        // CIDR allowlist (if set, only these may connect)
+	DenyIPs         []string    `json:"deny_ips"`         // CIDR denylist
+	RateLimitRPS    float64     `json:"rate_limit_rps"`   // per-IP requests/sec (0 = disabled)
+	RateLimitBurst  int         `json:"rate_limit_burst"` // per-IP burst size
+	CORS            *CORSConfig `json:"cors,omitempty"`
+
 	PluginConfigs map[string]any `json:"plugin_configs"`
+}
+
+// CORSConfig configures Cross-Origin Resource Sharing for a site.
+type CORSConfig struct {
+	AllowedOrigins   []string `json:"allowed_origins"` // "*" allowed
+	AllowedMethods   []string `json:"allowed_methods"`
+	AllowedHeaders   []string `json:"allowed_headers"`
+	AllowCredentials bool     `json:"allow_credentials"`
+	MaxAge           int      `json:"max_age"` // preflight cache seconds
 }
 
 // GetConfigDir returns the directory where configuration files are stored.
@@ -57,6 +85,20 @@ func GetConfigDir() string {
 		configDir = filepath.Join(os.Getenv("HOME"), ".config", "goup")
 	}
 	return configDir
+}
+
+// GetACMEDir returns the default directory where ACME-issued certificates are
+// cached.
+func GetACMEDir() string {
+	var base string
+	if xdgDataHome := os.Getenv("XDG_DATA_HOME"); xdgDataHome != "" {
+		base = filepath.Join(xdgDataHome, "goup")
+	} else if runtime.GOOS == "windows" {
+		base = filepath.Join(os.Getenv("APPDATA"), "goup")
+	} else {
+		base = filepath.Join(os.Getenv("HOME"), ".local", "share", "goup")
+	}
+	return filepath.Join(base, "acme")
 }
 
 // GetLogDir returns the directory where log files are stored.

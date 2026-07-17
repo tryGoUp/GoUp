@@ -1,0 +1,10 @@
+.git
+.github
+dist
+goup
+goup-dev
+goup-web
+goup-dns
+*.log
+tests
+docs

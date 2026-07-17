@@ -3,11 +3,12 @@ name: Build
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: ["main"]
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -16,13 +17,39 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Test
-        run: go test -v ./...
+      - name: gofmt
+        run: |
+          fmtout=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$fmtout" ]; then echo "Unformatted files:"; echo "$fmtout"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: Test (race)
+        run: go test -race ./...
+
+  build:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Build
         run: go build -o goup cmd/goup/main.go
 
       - uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: "continuous"

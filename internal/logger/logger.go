@@ -3,31 +3,10 @@ package logger
 import (
 	"io"
 	"os"
-	"sync"
 
 	"github.com/muesli/termenv"
 	"github.com/rs/zerolog"
 )
-
-var loggerBytePool = &byteSlicePool{
-	pool: sync.Pool{
-		New: func() any {
-			return make([]byte, 8*1024)
-		},
-	},
-}
-
-type byteSlicePool struct {
-	pool sync.Pool
-}
-
-func (b *byteSlicePool) Get() []byte {
-	return b.pool.Get().([]byte)
-}
-
-func (b *byteSlicePool) Put(buf []byte) {
-	b.pool.Put(buf)
-}
 
 // Fields is a map of string keys to arbitrary values, emulating logrus.Fields
 // for compatibility with existing code.
@@ -167,57 +146,43 @@ func NewSystemLogger(name string) (*Logger, error) {
 	return NewPluginLogger("system", name)
 }
 
-// Writer returns an io.WriteCloser that logs each written line.
+// Writer returns an io.WriteCloser that logs each complete line written to it.
+//
+// It writes directly and synchronously, with no background goroutine or pipe.
+// The previous implementation spawned a goroutine blocked on an io.Pipe read;
+// because os/exec never closes a user-supplied writer, that goroutine (and its
+// pooled buffer) leaked for every spawned child process.
 func (l *Logger) Writer() io.WriteCloser {
-	pr, pw := io.Pipe()
+	return &lineWriter{l: l}
+}
 
-	go func() {
-		defer pr.Close()
-		buf := loggerBytePool.Get()
-		defer loggerBytePool.Put(buf)
+// lineWriter accumulates bytes and emits one log line per newline. Each stream
+// (stdout/stderr) gets its own instance and is written by a single os/exec copy
+// goroutine, so no internal locking is required.
+type lineWriter struct {
+	l   *Logger
+	buf []byte
+}
 
-		var tmp []byte
-
-		for {
-			n, err := pr.Read(buf)
-			if n > 0 {
-				tmp = append(tmp, buf[:n]...)
-				for {
-					idx := indexOfNewline(tmp)
-					if idx == -1 {
-						break
-					}
-					line := tmp[:idx]
-					line = trimCR(line)
-					l.Info(string(line))
-					tmp = tmp[idx+1:]
-				}
-			}
-			if err != nil {
-				// Exit on error or EOF
-				break
-			}
+func (lw *lineWriter) Write(p []byte) (int, error) {
+	lw.buf = append(lw.buf, p...)
+	for {
+		idx := indexOfNewline(lw.buf)
+		if idx == -1 {
+			break
 		}
-		// Logging any remaining data
-		if len(tmp) > 0 {
-			l.Info(string(tmp))
-		}
-	}()
-
-	return &pipeWriteCloser{pipeWriter: pw}
+		lw.l.Info(string(trimCR(lw.buf[:idx])))
+		lw.buf = lw.buf[idx+1:]
+	}
+	return len(p), nil
 }
 
-// pipeWriteCloser implements Write and Close delegating to a PipeWriter.
-type pipeWriteCloser struct {
-	pipeWriter *io.PipeWriter
-}
-
-func (pwc *pipeWriteCloser) Write(data []byte) (int, error) {
-	return pwc.pipeWriter.Write(data)
-}
-
-func (pwc *pipeWriteCloser) Close() error {
-	return pwc.pipeWriter.Close()
+func (lw *lineWriter) Close() error {
+	if len(lw.buf) > 0 {
+		lw.l.Info(string(trimCR(lw.buf)))
+		lw.buf = nil
+	}
+	return nil
 }
 
 func indexOfNewline(buf []byte) int {
