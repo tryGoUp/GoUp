@@ -1,100 +1,149 @@
+// Package logger provides GoUp's logging facade. It is implemented on top of
+// go-foundation v2 core/logger: zerolog is gone, entries flow through
+// foundation sinks (a JSON file sink on the rotating writer and a colored
+// console sink for stdout).
 package logger
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/mirkobrombin/go-foundation/v2/core/logger"
 	"github.com/muesli/termenv"
-	"github.com/rs/zerolog"
 )
 
 // Fields is a map of string keys to arbitrary values, emulating logrus.Fields
 // for compatibility with existing code.
 type Fields map[string]any
 
-// Logger wraps a zerolog.Logger while exposing methods similar to logrus.
+// Logger wraps a foundation logger while exposing methods similar to logrus.
 type Logger struct {
-	base zerolog.Logger
-	out  io.Writer
+	base   logger.Logger
+	fields Fields
+	mu     sync.Mutex
+	sinks  []logger.Sink
 }
 
-// SetOutput changes the output writer (stdout, file, etc.).
+func toFields(f Fields) []logger.Field {
+	if len(f) == 0 {
+		return nil
+	}
+	out := make([]logger.Field, 0, len(f))
+	for k, v := range f {
+		out = append(out, logger.Field{Key: k, Value: v})
+	}
+	return out
+}
+
+// SetOutput replaces the sinks with a single JSON writer sink.
 func (l *Logger) SetOutput(w io.Writer) {
-	l.out = w
-	l.base = l.base.Output(w)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rebuild([]logger.Sink{&jsonWriterSink{w: w}})
+}
+
+func (l *Logger) rebuild(sinks []logger.Sink) {
+	l.sinks = sinks
+	opts := []logger.Option{logger.WithoutDefaultSink()}
+	for _, s := range sinks {
+		opts = append(opts, logger.WithSink(s))
+	}
+	l.base = logger.New(opts...).With(toFields(l.fields)...)
 }
 
 // WithFields returns a new Logger that includes the provided fields.
 func (l *Logger) WithFields(fields Fields) *Logger {
-	newBase := l.base.With().Fields(fields).Logger()
-	return &Logger{
-		base: newBase,
-		out:  l.out,
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	merged := Fields{}
+	for k, v := range l.fields {
+		merged[k] = v
 	}
+	for k, v := range fields {
+		merged[k] = v
+	}
+	nl := &Logger{fields: merged}
+	nl.rebuild(l.sinks)
+	return nl
 }
 
-// ColoredConsoleWriter wraps an io.Writer to print colored logs.
-func ColoredConsoleWriter(out io.Writer) zerolog.ConsoleWriter {
-	return zerolog.ConsoleWriter{
-		Out:        out,
-		TimeFormat: "15:04:05",
-		FormatLevel: func(i any) string {
-			level := i.(string)
-			switch level {
-			case "info":
-				return termenv.String("INFO").Foreground(termenv.ANSICyan).String()
-			case "warn":
-				return termenv.String("WARN").Foreground(termenv.ANSIYellow).String()
-			case "error":
-				return termenv.String("ERROR").Foreground(termenv.ANSIRed).String()
-			case "debug":
-				return termenv.String("DEBUG").Foreground(termenv.ANSIWhite).String()
-			default:
-				return level
-			}
-		},
+// jsonWriterSink writes each entry as one JSON object per line.
+type jsonWriterSink struct {
+	w  io.Writer
+	mu sync.Mutex
+}
+
+func (s *jsonWriterSink) Log(e logger.Entry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fields := make(map[string]any, len(e.Fields)+3)
+	for k, v := range e.Fields {
+		fields[k] = v
 	}
+	fields["level"] = e.Level
+	fields["time"] = e.Time.Format(time.RFC3339)
+	fields["msg"] = e.Msg
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = s.w.Write(append(out, '\n'))
+	return err
+}
+
+// consoleSink prints colored, human-readable lines to an io.Writer.
+type consoleSink struct {
+	w io.Writer
+}
+
+var levelColors = map[string]termenv.Color{
+	"info":  termenv.ANSICyan,
+	"warn":  termenv.ANSIYellow,
+	"error": termenv.ANSIRed,
+	"debug": termenv.ANSIWhite,
+}
+
+func (s *consoleSink) Log(e logger.Entry) error {
+	label := strings.ToUpper(e.Level)
+	if c, ok := levelColors[e.Level]; ok {
+		label = termenv.String(label).Foreground(c).String()
+	}
+	line := fmt.Sprintf("%s %s %s", e.Time.Format("15:04:05"), label, e.Msg)
+	for k, v := range e.Fields {
+		line += fmt.Sprintf(" %s=%v", k, v)
+	}
+	_, err := fmt.Fprintln(s.w, line)
+	return err
 }
 
 // Info logs a message at Info level.
-func (l *Logger) Info(msg string) {
-	l.base.Info().Msg(msg)
-}
+func (l *Logger) Info(msg string) { l.base.Info(msg) }
 
 // Infof logs a formatted message at Info level.
-func (l *Logger) Infof(format string, args ...any) {
-	l.base.Info().Msgf(format, args...)
-}
+func (l *Logger) Infof(format string, args ...any) { l.base.Info(fmt.Sprintf(format, args...)) }
 
 // Error logs a message at Error level.
-func (l *Logger) Error(msg string) {
-	l.base.Error().Msg(msg)
-}
+func (l *Logger) Error(msg string) { l.base.Error(msg) }
 
 // Errorf logs a formatted message at Error level.
-func (l *Logger) Errorf(format string, args ...any) {
-	l.base.Error().Msgf(format, args...)
-}
+func (l *Logger) Errorf(format string, args ...any) { l.base.Error(fmt.Sprintf(format, args...)) }
 
 // Debug logs a message at Debug level.
-func (l *Logger) Debug(msg string) {
-	l.base.Debug().Msg(msg)
-}
+func (l *Logger) Debug(msg string) { l.base.Debug(msg) }
 
 // Debugf logs a formatted message at Debug level.
-func (l *Logger) Debugf(format string, args ...any) {
-	l.base.Debug().Msgf(format, args...)
-}
+func (l *Logger) Debugf(format string, args ...any) { l.base.Debug(fmt.Sprintf(format, args...)) }
 
 // Warn logs a message at Warn level.
-func (l *Logger) Warn(msg string) {
-	l.base.Warn().Msg(msg)
-}
+func (l *Logger) Warn(msg string) { l.base.Warn(msg) }
 
 // Warnf logs a formatted message at Warn level.
-func (l *Logger) Warnf(format string, args ...any) {
-	l.base.Warn().Msgf(format, args...)
-}
+func (l *Logger) Warnf(format string, args ...any) { l.base.Warn(fmt.Sprintf(format, args...)) }
 
 // NewLogger creates a new Logger that writes JSON to files and colored
 // logs to stdout.
@@ -106,19 +155,8 @@ func NewLogger(identifier string, fields Fields) (*Logger, error) {
 		return nil, err
 	}
 
-	multiWriter := io.MultiWriter(file, ColoredConsoleWriter(os.Stdout))
-
-	base := zerolog.New(multiWriter).With().Timestamp().Logger()
-
-	l := &Logger{
-		base: base,
-		out:  multiWriter,
-	}
-
-	if fields != nil {
-		l = l.WithFields(fields)
-	}
-
+	l := &Logger{fields: fields}
+	l.rebuild([]logger.Sink{&jsonWriterSink{w: file}, &consoleSink{w: os.Stdout}})
 	return l, nil
 }
 
@@ -130,13 +168,8 @@ func NewPluginLogger(siteDomain, pluginName string) (*Logger, error) {
 		return nil, err
 	}
 
-	// Only file output with timestamp
-	base := zerolog.New(file).With().Timestamp().Logger()
-
-	l := &Logger{
-		base: base,
-		out:  file,
-	}
+	l := &Logger{}
+	l.rebuild([]logger.Sink{&jsonWriterSink{w: file}})
 	return l, nil
 }
 

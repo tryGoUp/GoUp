@@ -1,10 +1,11 @@
 package server
 
 import (
+	"context"
 	"os"
-	"sync"
-	"sync/atomic"
 	"time"
+
+	"github.com/mirkobrombin/go-warp/v1/cache"
 )
 
 // statCache caches os.Stat results (including "not found", the negative case)
@@ -12,54 +13,44 @@ import (
 // stats up to four paths per request (file, index.html, .br, .gz sidecars);
 // under load the same paths repeat, so a 1-second cache removes almost all of
 // those syscalls while keeping staleness bounded.
+//
+// The backing store is go-warp's in-memory cache: TTL expiry, LRU eviction
+// and the max-entries bound are handled there instead of by hand-rolled
+// sync.Map swapping.
 const statCacheTTL = time.Second
 
-// statCacheMaxEntries bounds memory usage: when the cache grows past this
-// (e.g. a scan of random 404 URLs), it is swapped for a fresh one.
+// statCacheMaxEntries bounds memory usage: past this, the oldest entries are
+// evicted (e.g. during a scan of random 404 URLs).
 const statCacheMaxEntries = 65536
 
 type statEntry struct {
-	info    os.FileInfo
-	err     error
-	expires int64
+	info os.FileInfo
+	err  error
 }
 
-var (
-	statCacheMap  atomic.Pointer[sync.Map]
-	statCacheSize atomic.Int64
+var statCache = cache.NewInMemory[statEntry](
+	cache.WithMaxEntries[statEntry](statCacheMaxEntries),
+	cache.WithSweepInterval[statEntry](time.Minute),
 )
-
-func init() {
-	statCacheMap.Store(&sync.Map{})
-}
 
 // resetStatCache drops every cached entry. Tests use it when they mutate the
 // filesystem and need the change visible before the TTL expires.
 func resetStatCache() {
-	statCacheMap.Store(&sync.Map{})
-	statCacheSize.Store(0)
+	statCache.Close()
+	statCache = cache.NewInMemory[statEntry](
+		cache.WithMaxEntries[statEntry](statCacheMaxEntries),
+		cache.WithSweepInterval[statEntry](time.Minute),
+	)
 }
 
 // cachedStat is a TTL-cached os.Stat.
 func cachedStat(path string) (os.FileInfo, error) {
-	now := time.Now().UnixNano()
-	m := statCacheMap.Load()
-
-	if v, ok := m.Load(path); ok {
-		e := v.(*statEntry)
-		if now < e.expires {
-			return e.info, e.err
-		}
+	ctx := context.Background()
+	if e, ok, err := statCache.Get(ctx, path); err == nil && ok {
+		return e.info, e.err
 	}
 
 	info, err := os.Stat(path)
-	e := &statEntry{info: info, err: err, expires: now + int64(statCacheTTL)}
-
-	if _, loaded := m.Swap(path, e); !loaded {
-		if statCacheSize.Add(1) > statCacheMaxEntries {
-			statCacheMap.Store(&sync.Map{})
-			statCacheSize.Store(0)
-		}
-	}
+	_ = statCache.Set(ctx, path, statEntry{info: info, err: err}, statCacheTTL)
 	return info, err
 }

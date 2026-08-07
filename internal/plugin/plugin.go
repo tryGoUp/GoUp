@@ -13,6 +13,8 @@ import (
 )
 
 // Plugin defines the interface for GoUP plugins.
+// Implementations declare conformance with contracts.Implements[Plugin] (or
+// verify via contracts.Verify) so a broken plugin surface fails fast.
 type Plugin interface {
 	// Name returns the plugin's name.
 	Name() string
