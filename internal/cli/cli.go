@@ -9,20 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mirkobrombin/go-cli-builder/v3/pkg/cli"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/pidfile"
 	"github.com/mirkobrombin/goup/internal/plugin"
 	"github.com/mirkobrombin/goup/internal/restart"
 	"github.com/mirkobrombin/goup/internal/server"
-	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 )
-
-var tuiMode bool
-var benchMode bool
-var configPath string
-var globalConfigPath string
 
 // Build metadata, injected at release time via -ldflags -X.
 var (
@@ -31,65 +26,75 @@ var (
 	Date    = "unknown"
 )
 
-// rootCmd represents the base command when called without any subcommands.
-var rootCmd = &cobra.Command{
-	Use:     "goup",
-	Short:   "GoUP is a minimal configurable web server",
-	Long:    `GoUP is a minimal configurable web server written in Go.`,
-	Version: fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, Date),
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if err := config.LoadGlobalConfig(globalConfigPath); err != nil {
-			fmt.Printf("Error loading global config: %v\n", err)
-			os.Exit(1)
-		}
-	},
+// Root flag values, mirrored from the parsed CLI root in Before so
+// subcommands (which do not see the root fields) can use them.
+var (
+	configPath       string
+	globalConfigPath string
+)
+
+// CLI is the root goup command.
+type CLI struct {
+	Config       string `cli:"config,c" help:"Path to specific site configuration file"`
+	GlobalConfig string `cli:"global-config" help:"Path to specific global configuration file"`
+
+	Generate GenerateCmd `cmd:"generate" help:"Generate a new configuration file for the specified domain"`
+	GenPass  GenPassCmd  `cmd:"gen-pass" help:"Generate a Bcrypt hash for a password (prompts securely if omitted)"`
+	Start    StartCmd    `cmd:"start" help:"Start the server"`
+	StartWeb StartWebCmd `cmd:"start-web" help:"Start only the web server"`
+	StartDNS StartDNSCmd `cmd:"start-dns" help:"Start only the DNS server"`
+	Validate ValidateCmd `cmd:"validate" help:"Validate the configuration files"`
+	List     ListCmd     `cmd:"list" help:"List all configured sites"`
+	Plugins  PluginsCmd  `cmd:"plugins" help:"List all registered plugins"`
+	Stop     StopCmd     `cmd:"stop" help:"Stop the running server"`
+	Restart  RestartCmd  `cmd:"restart" help:"Restart the server"`
+	Version  VersionCmd  `cmd:"version" help:"Print the GoUp version"`
+
+	cli.Base
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Before mirrors the old PersistentPreRun: global config loads before any
+// subcommand runs, and root flags are exposed to subcommands.
+func (c *CLI) Before() error {
+	configPath = c.Config
+	globalConfigPath = c.GlobalConfig
+	if err := config.LoadGlobalConfig(globalConfigPath); err != nil {
+		return fmt.Errorf("error loading global config: %w", err)
+	}
+	return nil
+}
+
+// Execute parses os.Args and runs the selected command.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+	app := &CLI{}
+	version := fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, Date)
+	a, err := cli.New(app, cli.WithVersion(version))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	a.SetName("goup")
+	if err := a.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func init() {
-	rootCmd.AddCommand(generateCmd)
-	rootCmd.AddCommand(genPassCmd)
-	rootCmd.AddCommand(startCmd)
-	rootCmd.AddCommand(startWebCmd)
-	rootCmd.AddCommand(startDNSCmd)
-	rootCmd.AddCommand(validateCmd)
-	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(pluginsCmd)
-	rootCmd.AddCommand(stopCmd)
-	rootCmd.AddCommand(restartCmd)
-	rootCmd.AddCommand(versionCmd)
+// GenerateCmd generates a new site configuration interactively.
+type GenerateCmd struct {
+	Domain string `arg:"" required:"true" help:"Domain to generate the configuration for"`
 
-	startCmd.Flags().BoolVarP(&tuiMode, "tui", "t", false, "Enable TUI mode")
-	startCmd.Flags().BoolVarP(&benchMode, "bench", "b", false, "Enable benchmark mode")
-
-	// Global flags
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to specific site configuration file")
-	rootCmd.PersistentFlags().StringVar(&globalConfigPath, "global-config", "", "Path to specific global configuration file")
+	cli.Base
 }
 
-var generateCmd = &cobra.Command{
-	Use:   "generate [domain]",
-	Short: "Generate a new configuration file for the specified domain",
-	Args:  cobra.ExactArgs(1),
-	Run:   generate,
-}
-
-func generate(cmd *cobra.Command, args []string) {
-	domain := args[0]
+func (c *GenerateCmd) Run() error {
+	domain := c.Domain
 	configDir := config.GetConfigDir()
 	os.MkdirAll(configDir, os.ModePerm)
 	configFile := filepath.Join(configDir, domain+".json")
 
 	if _, err := os.Stat(configFile); err == nil {
-		fmt.Printf("Configuration file for %s already exists.\n", domain)
-		os.Exit(1)
+		return fmt.Errorf("configuration file for %s already exists", domain)
 	}
 
 	conf := config.SiteConfig{
@@ -119,8 +124,7 @@ func generate(cmd *cobra.Command, args []string) {
 	if !filepath.IsAbs(conf.RootDirectory) {
 		absPath, err := filepath.Abs(conf.RootDirectory)
 		if err != nil {
-			fmt.Printf("Error resolving root directory path: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error resolving root directory path: %w", err)
 		}
 		conf.RootDirectory = absPath
 	}
@@ -167,33 +171,54 @@ func generate(cmd *cobra.Command, args []string) {
 	}
 
 	if err := conf.Save(configFile); err != nil {
-		fmt.Printf("Error saving configuration: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error saving configuration: %w", err)
 	}
 
-	fmt.Printf("Configuration file created at %s\n", configFile)
+	c.Logger.Success("Configuration file created at %s", configFile)
+	return nil
 }
 
-var startCmd = &cobra.Command{
-	Use:   "start",
-	Short: "Start the server",
-	Run:   start,
+// StartCmd starts web and DNS servers.
+type StartCmd struct {
+	TUI   bool `cli:"tui,t" help:"Enable TUI mode"`
+	Bench bool `cli:"bench,b" help:"Enable benchmark mode"`
+
+	cli.Base
 }
 
-func start(cmd *cobra.Command, args []string) {
+func (c *StartCmd) Run() error {
+	return startServers(c.TUI, c.Bench, server.ModeAll, "Starting full GoUp server (Web + DNS)...")
+}
+
+// StartWebCmd starts only the web server.
+type StartWebCmd struct {
+	cli.Base
+}
+
+func (c *StartWebCmd) Run() error {
+	return startServers(false, false, server.ModeWeb, "Starting GoUp Web Server...")
+}
+
+// StartDNSCmd starts only the DNS server.
+type StartDNSCmd struct {
+	cli.Base
+}
+
+func (c *StartDNSCmd) Run() error {
+	return startServers(false, false, server.ModeDNS, "Starting GoUp DNS Server...")
+}
+
+func startServers(tuiMode, benchMode bool, mode server.ServerMode, banner string) error {
 	configs, err := loadConfigs()
 	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading configurations: %w", err)
 	}
 
 	if len(configs) == 0 {
 		if configPath != "" {
-			fmt.Printf("No valid configurations found in %s\n", configPath)
-		} else {
-			fmt.Printf("No configurations found in %s\n", config.GetConfigDir())
+			return fmt.Errorf("no valid configurations found in %s", configPath)
 		}
-		os.Exit(1)
+		return fmt.Errorf("no configurations found in %s", config.GetConfigDir())
 	}
 
 	// Write PID file
@@ -205,70 +230,13 @@ func start(cmd *cobra.Command, args []string) {
 		handleShutdownSignal()
 	}
 
-	fmt.Println("Starting full GoUp server (Web + DNS)...")
-	server.StartServers(configs, tuiMode, benchMode, server.ModeAll)
+	fmt.Println(banner)
+	server.StartServers(configs, tuiMode, benchMode, mode)
 
 	if !tuiMode {
 		select {}
 	}
-}
-
-var startWebCmd = &cobra.Command{
-	Use:   "start-web",
-	Short: "Start only the web server",
-	Run:   startWeb,
-}
-
-func startWeb(cmd *cobra.Command, args []string) {
-	configs, err := loadConfigs()
-	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := pidfile.Write(); err != nil {
-		fmt.Printf("Warning: could not write PID file: %v\n", err)
-	}
-
-	if !tuiMode {
-		handleShutdownSignal()
-	}
-
-	fmt.Println("Starting GoUp Web Server...")
-	server.StartServers(configs, tuiMode, benchMode, server.ModeWeb)
-
-	if !tuiMode {
-		select {}
-	}
-}
-
-var startDNSCmd = &cobra.Command{
-	Use:   "start-dns",
-	Short: "Start only the DNS server",
-	Run:   startDNS,
-}
-
-func startDNS(cmd *cobra.Command, args []string) {
-	configs, err := loadConfigs()
-	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := pidfile.Write(); err != nil {
-		fmt.Printf("Warning: could not write PID file: %v\n", err)
-	}
-
-	if !tuiMode {
-		handleShutdownSignal()
-	}
-
-	fmt.Println("Starting GoUp DNS Server...")
-	server.StartServers(configs, tuiMode, benchMode, server.ModeDNS)
-
-	if !tuiMode {
-		select {}
-	}
+	return nil
 }
 
 func handleShutdownSignal() {
@@ -303,33 +271,32 @@ func loadConfigs() ([]config.SiteConfig, error) {
 	return config.LoadAllConfigs()
 }
 
-var stopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "Stop the running server",
-	Run: func(cmd *cobra.Command, args []string) {
-		pid, err := pidfile.Read()
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			fmt.Printf("Error finding process %d: %v\n", pid, err)
-			os.Exit(1)
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
-			fmt.Printf("Error sending signal: %v\n", err)
-			os.Exit(1)
-		}
-		if waitForExit(pid, 10*time.Second) {
-			fmt.Println("Server stopped.")
-		} else {
-			fmt.Println("Server did not stop in time, forcing...")
-			_ = proc.Kill()
-			waitForExit(pid, 5*time.Second)
-		}
-		pidfile.Remove()
-	},
+// StopCmd stops the running server.
+type StopCmd struct {
+	cli.Base
+}
+
+func (c *StopCmd) Run() error {
+	pid, err := pidfile.Read()
+	if err != nil {
+		return err
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("error finding process %d: %w", pid, err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("error sending signal: %w", err)
+	}
+	if waitForExit(pid, 10*time.Second) {
+		c.Logger.Success("Server stopped.")
+	} else {
+		c.Logger.Warning("Server did not stop in time, forcing...")
+		_ = proc.Kill()
+		waitForExit(pid, 5*time.Second)
+	}
+	pidfile.Remove()
+	return nil
 }
 
 // processAlive reports whether a process with the given PID is currently
@@ -357,78 +324,65 @@ func waitForExit(pid int, timeout time.Duration) bool {
 	return !processAlive(pid)
 }
 
-var restartCmd = &cobra.Command{
-	Use:   "restart",
-	Short: "Restart the server",
-	Run: func(cmd *cobra.Command, args []string) {
-		pid, err := pidfile.Read()
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			fmt.Printf("Error finding process %d: %v\n", pid, err)
-			os.Exit(1)
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
-			fmt.Printf("Error sending signal: %v\n", err)
-			os.Exit(1)
-		}
-		// Wait for the old process to release its PID file, ports and
-		// listeners before starting a fresh instance, otherwise the two
-		// race over the PID file and the sockets.
-		if !waitForExit(pid, 15*time.Second) {
-			fmt.Println("Previous instance did not stop in time, forcing...")
-			_ = proc.Kill()
-			waitForExit(pid, 5*time.Second)
-		}
-
-		exe, err := os.Executable()
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Re-exec as "start" (not "restart"), preserving the config flags so
-		// the new process actually serves traffic instead of re-running the
-		// restart command against a now-stopped server.
-		newArgs := []string{exe, "start"}
-		if configPath != "" {
-			newArgs = append(newArgs, "--config", configPath)
-		}
-		if globalConfigPath != "" {
-			newArgs = append(newArgs, "--global-config", globalConfigPath)
-		}
-		if err := syscall.Exec(exe, newArgs, os.Environ()); err != nil {
-			fmt.Printf("Error restarting: %v\n", err)
-			os.Exit(1)
-		}
-	},
+// RestartCmd stops the running server and re-execs it as "start".
+type RestartCmd struct {
+	cli.Base
 }
 
-var validateCmd = &cobra.Command{
-	Use:   "validate",
-	Short: "Validate the configuration files",
-	Run:   validate,
+func (c *RestartCmd) Run() error {
+	pid, err := pidfile.Read()
+	if err != nil {
+		return err
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("error finding process %d: %w", pid, err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("error sending signal: %w", err)
+	}
+	// Wait for the old process to release its PID file, ports and
+	// listeners before starting a fresh instance, otherwise the two
+	// race over the PID file and the sockets.
+	if !waitForExit(pid, 15*time.Second) {
+		c.Logger.Warning("Previous instance did not stop in time, forcing...")
+		_ = proc.Kill()
+		waitForExit(pid, 5*time.Second)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	// Re-exec as "start" (not "restart"), preserving the config flags so
+	// the new process actually serves traffic instead of re-running the
+	// restart command against a now-stopped server.
+	newArgs := []string{exe, "start"}
+	if configPath != "" {
+		newArgs = append(newArgs, "--config", configPath)
+	}
+	if globalConfigPath != "" {
+		newArgs = append(newArgs, "--global-config", globalConfigPath)
+	}
+	if err := syscall.Exec(exe, newArgs, os.Environ()); err != nil {
+		return fmt.Errorf("error restarting: %w", err)
+	}
+	return nil
 }
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the GoUp version",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("goup %s\ncommit: %s\nbuilt:  %s\n", Version, Commit, Date)
-	},
+// ValidateCmd validates all configuration files.
+type ValidateCmd struct {
+	cli.Base
 }
 
-func validate(cmd *cobra.Command, args []string) {
+func (c *ValidateCmd) Run() error {
 	configDir := config.GetConfigDir()
 	fmt.Printf("Validating configurations in %s:\n", configDir)
 
 	fileErrors, crossErrors, err := config.ValidateAll()
 	if err != nil {
-		fmt.Printf("Error reading configuration directory %s: %v\n", configDir, err)
-		os.Exit(1)
+		return fmt.Errorf("error reading configuration directory %s: %w", configDir, err)
 	}
 
 	// Report each file. ValidateAll only returns entries with problems, so read
@@ -451,83 +405,92 @@ func validate(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	for _, c := range crossErrors {
-		fmt.Printf("! %s\n", c)
+	for _, ce := range crossErrors {
+		fmt.Printf("! %s\n", ce)
 	}
 
 	if hasError {
-		os.Exit(1)
+		return fmt.Errorf("configuration validation failed")
 	}
+	return nil
 }
 
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all configured sites",
-	Run:   list,
+// ListCmd lists all configured sites.
+type ListCmd struct {
+	cli.Base
 }
 
-func list(cmd *cobra.Command, args []string) {
+func (c *ListCmd) Run() error {
 	configs, err := config.LoadAllConfigs()
 	if err != nil {
-		fmt.Printf("Error loading configurations: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading configurations: %w", err)
 	}
 
 	fmt.Println("Configured sites:")
 	for _, conf := range configs {
 		fmt.Printf("- %s (port %d)\n", conf.Domain, conf.Port)
 	}
+	return nil
 }
 
-var pluginsCmd = &cobra.Command{
-	Use:   "plugins",
-	Short: "List all registered plugins",
-	Run: func(cmd *cobra.Command, args []string) {
-		pluginManager := plugin.GetPluginManagerInstance()
-		plugins := pluginManager.GetRegisteredPlugins()
-
-		if len(plugins) == 0 {
-			fmt.Println("No plugins registered.")
-			return
-		}
-
-		fmt.Println("Registered plugins:")
-		for _, name := range plugins {
-			fmt.Printf("- %s\n", name)
-		}
-	},
+// PluginsCmd lists all registered plugins.
+type PluginsCmd struct {
+	cli.Base
 }
 
-// genPassCmd generates a Bcrypt password hash.
-var genPassCmd = &cobra.Command{
-	Use:   "gen-pass [password]",
-	Short: "Generate a Bcrypt hash for a password",
-	Long:  `Generate a Bcrypt hash for a password. If no password is provided as an argument, you will be prompted to enter one securely.`,
-	Args:  cobra.MaximumNArgs(1),
-	Run:   genPass,
+func (c *PluginsCmd) Run() error {
+	pluginManager := plugin.GetPluginManagerInstance()
+	plugins := pluginManager.GetRegisteredPlugins()
+
+	if len(plugins) == 0 {
+		fmt.Println("No plugins registered.")
+		return nil
+	}
+
+	fmt.Println("Registered plugins:")
+	for _, name := range plugins {
+		fmt.Printf("- %s\n", name)
+	}
+	return nil
 }
 
-func genPass(cmd *cobra.Command, args []string) {
+// VersionCmd prints version, commit and build date.
+type VersionCmd struct {
+	cli.Base
+}
+
+func (c *VersionCmd) Run() error {
+	fmt.Printf("goup %s\ncommit: %s\nbuilt:  %s\n", Version, Commit, Date)
+	return nil
+}
+
+// GenPassCmd generates a Bcrypt password hash.
+type GenPassCmd struct {
+	Password string `arg:"" help:"Password to hash (prompted securely if omitted)"`
+
+	cli.Base
+}
+
+func (c *GenPassCmd) Run() error {
 	var password []byte
 	var err error
 
-	if len(args) > 0 {
-		password = []byte(args[0])
+	if c.Password != "" {
+		password = []byte(c.Password)
 	} else {
 		fmt.Print("Enter Password: ")
 		password, err = term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println() // Add newline after silent input
 		if err != nil {
-			fmt.Printf("Error reading password: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error reading password: %w", err)
 		}
 	}
 
 	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Printf("Error generating hash: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error generating hash: %w", err)
 	}
 
 	fmt.Println(string(hash))
+	return nil
 }

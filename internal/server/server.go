@@ -2,12 +2,11 @@ package server
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"sync"
 
-	"github.com/armon/go-radix"
+	"github.com/mirkobrombin/go-foundation/v2/core/httpx"
 	"github.com/mirkobrombin/goup/internal/assets"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
@@ -111,14 +110,23 @@ func startSingleServer(conf config.SiteConfig, mwManager *middleware.MiddlewareM
 	startServerInstance(server, conf, lg)
 }
 
-// startVirtualHostServer starts a server that handles multiple domains on the same port.
+// startVirtualHostServer starts a server that handles multiple domains on the
+// same port. Host dispatch runs through Foundation's VHostMux (normalized
+// host matching); the first registered handler remains the fallback for
+// unknown hosts, preserving the previous behavior.
 func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *middleware.MiddlewareManager, pm *plugin.PluginManager) {
 	identifier := fmt.Sprintf("port_%d", port)
 	lg := loggers[identifier]
 
-	radixTree := radix.New()
-
 	var firstHandler http.Handler
+
+	mux := httpx.NewVHostMux(httpx.WithFallback(http.HandlerFunc(func(w_ http.ResponseWriter, r_ *http.Request) {
+		if firstHandler != nil {
+			firstHandler.ServeHTTP(w_, r_)
+			return
+		}
+		assets.RenderErrorPage(w_, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
+	})))
 
 	for _, conf := range configs {
 		if conf.ProxyPass == "" && conf.RootDirectory != "" {
@@ -140,30 +148,11 @@ func startVirtualHostServer(port int, configs []config.SiteConfig, mwManager *mi
 			firstHandler = handler
 		}
 
-		radixTree.Insert(conf.Domain, handler)
+		mux.AddVirtualHost(httpx.VirtualHost{Host: conf.Domain, Handler: handler})
 	}
 
 	serverConf := config.SiteConfig{Port: port}
-
-	mainHandler := func(w_ http.ResponseWriter, r_ *http.Request) {
-		host, _, err := net.SplitHostPort(r_.Host)
-		if err != nil {
-			// Host might not have a port (e.g. "example.com")
-			host = r_.Host
-		}
-
-		if h, found := radixTree.Get(host); found {
-			h.(http.Handler).ServeHTTP(w_, r_)
-		} else {
-			if firstHandler != nil {
-				firstHandler.ServeHTTP(w_, r_)
-				return
-			}
-			assets.RenderErrorPage(w_, http.StatusNotFound, "Page Not Found", "The page you are looking for does not exist.")
-		}
-	}
-
-	server := createHTTPServer(serverConf, http.HandlerFunc(mainHandler))
+	server := createHTTPServer(serverConf, mux)
 	serverConf.SSL.Enabled = setupTLS(server, configs, lg)
 	startServerInstance(server, serverConf, lg)
 }

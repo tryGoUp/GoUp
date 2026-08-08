@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 
+	"github.com/mirkobrombin/go-foundation/v2/core/httpx"
 	"github.com/mirkobrombin/goup/internal/config"
 	"github.com/mirkobrombin/goup/internal/logger"
 	"golang.org/x/crypto/acme"
@@ -16,7 +17,7 @@ import (
 // manager that obtains and renews Let's Encrypt certificates (via TLS-ALPN-01
 // on the TLS port). It returns false when no site enables TLS.
 func setupTLS(server *http.Server, confs []config.SiteConfig, lg *logger.Logger) bool {
-	var staticCerts []tls.Certificate
+	resolver := httpx.NewCertResolver()
 	var acmeHosts []string
 	var acmeEmail, acmeCache string
 	tlsWanted := false
@@ -40,12 +41,10 @@ func setupTLS(server *http.Server, confs []config.SiteConfig, lg *logger.Logger)
 			lg.Errorf("SSL enabled for %s but certificate/key not set (and ACME off)", c.Domain)
 			continue
 		}
-		cert, err := tls.LoadX509KeyPair(c.SSL.Certificate, c.SSL.Key)
-		if err != nil {
+		if err := resolver.Add(c.Domain, c.SSL.Certificate, c.SSL.Key); err != nil {
 			lg.Errorf("SSL certificate error for %s: %v", c.Domain, err)
 			continue
 		}
-		staticCerts = append(staticCerts, cert)
 	}
 
 	if !tlsWanted {
@@ -55,8 +54,8 @@ func setupTLS(server *http.Server, confs []config.SiteConfig, lg *logger.Logger)
 	server.TLSConfig.MinVersion = tls.VersionTLS12
 
 	if len(acmeHosts) == 0 {
-		// Static certificates only; the tls package selects by SNI.
-		server.TLSConfig.Certificates = staticCerts
+		// Static certificates only; the resolver selects by SNI.
+		server.TLSConfig.GetCertificate = resolver.GetCertificate
 		return true
 	}
 
@@ -77,12 +76,9 @@ func setupTLS(server *http.Server, confs []config.SiteConfig, lg *logger.Logger)
 
 	// Prefer a matching static certificate (for non-ACME hosts sharing the
 	// port), otherwise let the ACME manager serve/obtain one.
-	certs := staticCerts
 	server.TLSConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		for i := range certs {
-			if err := hello.SupportsCertificate(&certs[i]); err == nil {
-				return &certs[i], nil
-			}
+		if cert, err := resolver.GetCertificate(hello); err == nil {
+			return cert, nil
 		}
 		return mgr.GetCertificate(hello)
 	}

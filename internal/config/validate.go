@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sort"
+	"strings"
 	"time"
+
+	"github.com/mirkobrombin/go-foundation/v2/core/configuration"
 )
 
 // Validate performs semantic validation of a site configuration and returns a
@@ -89,6 +93,10 @@ func StrictParseSiteConfig(path string) (SiteConfig, error) {
 // ValidateAll validates every site config file in the config directory and
 // returns a per-file map of problems plus any cross-site conflicts (duplicate
 // domains, or a port shared by sites that disagree on SSL).
+//
+// The two failure modes map onto Foundation's collection validation: per-file
+// rules run as the item validator (keyed by file name, which is the entry
+// name here) and cross-site conflicts as cross validators.
 func ValidateAll() (fileErrors map[string][]string, crossErrors []string, err error) {
 	dir := GetConfigDir()
 	entries, err := os.ReadDir(dir)
@@ -97,8 +105,7 @@ func ValidateAll() (fileErrors map[string][]string, crossErrors []string, err er
 	}
 
 	fileErrors = make(map[string][]string)
-	seenDomains := make(map[string]string)
-	portSSL := make(map[int]*bool)
+	confs := make(map[string]*SiteConfig)
 
 	for _, e := range entries {
 		name := e.Name()
@@ -115,25 +122,62 @@ func ValidateAll() (fileErrors map[string][]string, crossErrors []string, err er
 			fileErrors[name] = []string{"parse error: " + perr.Error()}
 			continue
 		}
-		if problems := conf.Validate(); len(problems) > 0 {
-			fileErrors[name] = problems
-		}
+		confs[name] = &conf
+	}
 
-		if prev, ok := seenDomains[conf.Domain]; ok {
-			crossErrors = append(crossErrors, fmt.Sprintf("duplicate domain %q in %s and %s", conf.Domain, prev, name))
+	for _, p := range configuration.ValidateCollection(confs,
+		func(name string, conf *SiteConfig) []string { return conf.Validate() },
+		duplicateDomains, conflictingPortSSL,
+	) {
+		// Item problems come back prefixed with the entry name; split the
+		// prefix back out to keep the per-file return shape.
+		if n, rest, ok := strings.Cut(p, ": "); ok && confs[n] != nil {
+			fileErrors[n] = append(fileErrors[n], rest)
 		} else {
-			seenDomains[conf.Domain] = name
-		}
-
-		ssl := conf.SSL.Enabled
-		if prev, ok := portSSL[conf.Port]; ok {
-			if *prev != ssl {
-				crossErrors = append(crossErrors, fmt.Sprintf("port %d mixes SSL and non-SSL sites", conf.Port))
-			}
-		} else {
-			portSSL[conf.Port] = &ssl
+			crossErrors = append(crossErrors, p)
 		}
 	}
 
 	return fileErrors, crossErrors, nil
+}
+
+// duplicateDomains reports sites that declare the same domain in two files.
+func duplicateDomains(confs map[string]*SiteConfig) []string {
+	seen := make(map[string]string)
+	var out []string
+	for _, name := range sortedKeys(confs) {
+		d := confs[name].Domain
+		if prev, ok := seen[d]; ok {
+			out = append(out, fmt.Sprintf("duplicate domain %q in %s and %s", d, prev, name))
+		} else {
+			seen[d] = name
+		}
+	}
+	return out
+}
+
+// conflictingPortSSL reports ports shared by sites that disagree on SSL.
+func conflictingPortSSL(confs map[string]*SiteConfig) []string {
+	portSSL := make(map[int]bool)
+	var out []string
+	for _, name := range sortedKeys(confs) {
+		conf := confs[name]
+		if prev, ok := portSSL[conf.Port]; ok {
+			if prev != conf.SSL.Enabled {
+				out = append(out, fmt.Sprintf("port %d mixes SSL and non-SSL sites", conf.Port))
+			}
+		} else {
+			portSSL[conf.Port] = conf.SSL.Enabled
+		}
+	}
+	return out
+}
+
+func sortedKeys(confs map[string]*SiteConfig) []string {
+	names := make([]string, 0, len(confs))
+	for name := range confs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

@@ -1,13 +1,17 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
+
+	configdir "github.com/mirkobrombin/go-foundation/v2/core/configuration/source/dir"
 )
 
 // customLogDir is used to override the default log directory, e.g. for testing.
@@ -166,53 +170,66 @@ func LoadConfigsFromFile(filePath string) ([]SiteConfig, error) {
 	return nil, fmt.Errorf("failed to parse config file: %s (must be SiteConfig or []SiteConfig local json)", filePath)
 }
 
-// LoadAllConfigs loads all configurations from the configuration directory.
+// LoadAllConfigs loads all site configurations from the configuration
+// directory. File discovery and per-file parsing run through the Foundation
+// configuration dir provider; each file is then strictly decoded by
+// LoadConfig, so unknown fields keep failing as before.
+//
+// The global config file is excluded by the provider: it lives in the same
+// directory but is not a site definition (loading it would create a phantom
+// site with an empty domain on port 0).
 func LoadAllConfigs() ([]SiteConfig, error) {
 	configDir := GetConfigDir()
-	files, err := os.ReadDir(configDir)
+
+	provider := configdir.New(configDir, "*.json", globalConfName)
+	// The provider is queried first only to surface a missing directory as an
+	// error, mirroring the previous os.ReadDir behavior.
+	if _, err := provider.Load(context.Background()); err != nil {
+		return nil, err
+	}
+
+	names, err := siteFileNames(configDir)
 	if err != nil {
 		return nil, err
 	}
 
 	var configs []SiteConfig
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, file := range files {
-		// Skip the global config file: it lives in the same directory but is
-		// not a site definition (loading it would create a phantom site with an
-		// empty domain on port 0).
-		if file.Name() == globalConfName {
+	for _, name := range names {
+		fullPath, err := SafeJoin(configDir, name)
+		if err != nil {
+			fmt.Printf("Error loading config %s: %v\n", name, err)
 			continue
 		}
-		if filepath.Ext(file.Name()) == ".json" {
-			wg.Add(1)
-			go func(fname string) {
-				defer wg.Done()
-
-				fullPath, err := SafeJoin(configDir, fname)
-				if err != nil {
-					fmt.Printf("Error loading config %s: %v\n", fname, err)
-					return
-				}
-				conf, err := LoadConfig(fullPath)
-				if err != nil {
-					fmt.Printf("Error loading config %s: %v\n", fname, err)
-					return
-				}
-
-				mu.Lock()
-				configs = append(configs, conf)
-				SiteConfigsMu.Lock()
-				SiteConfigs[conf.Domain] = conf
-				SiteConfigsMu.Unlock()
-				mu.Unlock()
-			}(file.Name())
+		conf, err := LoadConfig(fullPath)
+		if err != nil {
+			fmt.Printf("Error loading config %s: %v\n", name, err)
+			continue
 		}
-	}
 
-	wg.Wait()
+		configs = append(configs, conf)
+		SiteConfigsMu.Lock()
+		SiteConfigs[conf.Domain] = conf
+		SiteConfigsMu.Unlock()
+	}
 	return configs, nil
+}
+
+// siteFileNames returns the sorted site file names in the configuration
+// directory: the same files the dir provider would load, in the same order.
+func siteFileNames(configDir string) ([]string, error) {
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == globalConfName || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // Save saves the configuration to a file.
