@@ -5,11 +5,10 @@ go 1.25.0
 toolchain go1.26.5
 
 require (
-	github.com/armon/go-radix v1.0.0
 	github.com/gorilla/mux v1.8.1
 	github.com/miekg/dns v1.1.72
 	github.com/mirkobrombin/go-cli-builder/v3 v3.0.1
-	github.com/mirkobrombin/go-foundation/v2 v2.2.0
+	github.com/mirkobrombin/go-foundation/v2 v2.3.2
 	github.com/mirkobrombin/go-warp v1.2.2
 	github.com/muesli/termenv v0.16.0
 	github.com/quic-go/quic-go v0.60.0
