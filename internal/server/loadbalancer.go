@@ -72,7 +72,7 @@ func (t *trackWriter) Write(b []byte) (int, error) {
 	return t.ResponseWriter.Write(b)
 }
 
-func newLoadBalancer(targets []string, log *logger.Logger) (*loadBalancer, error) {
+func newLoadBalancer(targets []string, headers map[string]string, log *logger.Logger) (*loadBalancer, error) {
 	lb := &loadBalancer{log: log}
 	for _, t := range targets {
 		u, err := url.Parse(t)
@@ -81,6 +81,7 @@ func newLoadBalancer(targets []string, log *logger.Logger) (*loadBalancer, error
 		}
 		proxy := httputil.NewSingleHostReverseProxy(u)
 		proxy.Transport = defaultTransport
+		setRequestHeaders(proxy, headers)
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			if f, ok := r.Context().Value(lbFailKey).(*bool); ok {
 				*f = true

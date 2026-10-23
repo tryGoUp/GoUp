@@ -106,3 +106,38 @@ func TestCreateHandler_ProxyPass(t *testing.T) {
 		t.Errorf("Expected body %q, got %q", expectedBody, w.Body.String())
 	}
 }
+
+func TestCreateHandler_ProxyRequestHeaders(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(r.Host + "|" + r.Header.Get("Authorization")))
+	}))
+	defer backend.Close()
+
+	conf := config.SiteConfig{
+		Domain:         "example.com",
+		ProxyPass:      backend.URL,
+		RequestTimeout: 60,
+		ProxyRequestHeaders: map[string]string{
+			"Host":          "upstream.example",
+			"Authorization": "Bearer token",
+		},
+	}
+
+	testLogger, err := logger.NewLogger("test_handler_proxy_headers", nil)
+	if err != nil {
+		t.Fatalf("Error creating logger: %v", err)
+	}
+	testLogger.SetOutput(httptest.NewRecorder())
+
+	handler, err := createHandler(conf, testLogger, "test", &middleware.MiddlewareManager{})
+	if err != nil {
+		t.Fatalf("Error creating handler: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "http://example.com/", nil))
+
+	if got := w.Body.String(); got != "upstream.example|Bearer token" {
+		t.Errorf("Expected the backend to see the configured headers, got %q", got)
+	}
+}

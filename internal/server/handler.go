@@ -26,7 +26,7 @@ func createHandler(conf config.SiteConfig, log *logger.Logger, identifier string
 
 	if len(conf.ProxyUpstreams) > 0 {
 		// Load-balance across multiple upstreams with passive health checks.
-		lb, err := newLoadBalancer(conf.ProxyUpstreams, log)
+		lb, err := newLoadBalancer(conf.ProxyUpstreams, conf.ProxyRequestHeaders, log)
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy_upstreams: %v", err)
 		}
@@ -181,7 +181,7 @@ func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputi
 	sharedProxyMapMu.Lock()
 	defer sharedProxyMapMu.Unlock()
 
-	key := fmt.Sprintf("%s|%s|%d", conf.ProxyPass, conf.FlushInterval, conf.BufferSizeKB)
+	key := fmt.Sprintf("%s|%s|%d|%v", conf.ProxyPass, conf.FlushInterval, conf.BufferSizeKB, conf.ProxyRequestHeaders)
 
 	if rp, ok := sharedProxyMap[key]; ok {
 		return rp, nil
@@ -194,6 +194,7 @@ func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputi
 
 	rp := httputil.NewSingleHostReverseProxy(parsedURL)
 	rp.Transport = defaultTransport
+	setRequestHeaders(rp, conf.ProxyRequestHeaders)
 
 	// Set custom error handler for the proxy
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -217,4 +218,21 @@ func getSharedReverseProxy(conf config.SiteConfig, log *logger.Logger) (*httputi
 
 	sharedProxyMap[key] = rp
 	return rp, nil
+}
+
+func setRequestHeaders(rp *httputil.ReverseProxy, headers map[string]string) {
+	if len(headers) == 0 {
+		return
+	}
+	director := rp.Director
+	rp.Director = func(req *http.Request) {
+		director(req)
+		for name, value := range headers {
+			if strings.EqualFold(name, "Host") {
+				req.Host = value
+				continue
+			}
+			req.Header.Set(name, value)
+		}
+	}
 }

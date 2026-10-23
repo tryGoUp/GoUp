@@ -11,6 +11,7 @@ GoUP! is a minimal, tweakable web server written in Go. You can use it to serve 
 
 - Serve static files from a specified root directory
 - Reverse proxy to a single backend or load-balance across several (`proxy_upstreams`) with health checks and failover
+- Request headers for proxied backends (`proxy_request_headers`), including the `Host` header
 - SSL/TLS with custom certificates or automatic Let's Encrypt certificates (`ssl.acme`)
 - HTTP-to-HTTPS redirect, HSTS, and configurable security headers
 - Edge hardening: per-IP rate limiting, IP allow/deny lists, request body limits, CORS
